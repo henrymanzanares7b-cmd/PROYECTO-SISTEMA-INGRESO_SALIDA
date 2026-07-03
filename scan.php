@@ -42,7 +42,7 @@ if(!isset($_SESSION['usuario'])) {
                 
                 <form method="POST" action="procesar_asistencia.php" id="formulario-asistencia">
                     <div class="input-group mb-3">
-                        <input type="text" class="form-control" name="codigo_empleado" id="input-codigo" placeholder="Ej. EMP-001" required>
+                        <input type="text" class="form-control" name="qr_data" id="input-codigo" placeholder="Ej. EMP-001" required>
                         <button class="btn btn-primary" type="submit">Registrar Manual</button>
                     </div>
                 </form>
