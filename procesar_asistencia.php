@@ -5,23 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Registro de Asistencia</title>
     <style>
-        /* Estilos generales para centrar y dar color al fondo */
+        /* Estilos generales para centrar TODO en la pantalla */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f0f2f5;
             display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+            justify-content: center; /* Centra horizontalmente */
+            align-items: center;     /* Centra verticalmente */
+            height: 100vh;           /* Ocupa el 100% del alto de la pantalla */
             margin: 0;
         }
         
         /* Estilo base para la tarjeta de notificación */
         .alerta {
-            padding: 25px 35px;
+            padding: 30px 40px;
             border-radius: 12px;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-            font-size: 1.2rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            font-size: 1.3rem;
             text-align: center;
             max-width: 500px;
             width: 90%;
@@ -33,40 +33,41 @@
         .alerta-exito {
             background-color: #d4edda;
             color: #155724;
-            border-bottom: 5px solid #28a745;
+            border-bottom: 6px solid #28a745;
         }
         .alerta-aviso {
             background-color: #fff3cd;
             color: #856404;
-            border-bottom: 5px solid #ffc107;
+            border-bottom: 6px solid #ffc107;
         }
         .alerta-error {
             background-color: #f8d7da;
             color: #721c24;
-            border-bottom: 5px solid #dc3545;
+            border-bottom: 6px solid #dc3545;
         }
         .alerta-info {
             background-color: #cce5ff;
             color: #004085;
-            border-bottom: 5px solid #007bff;
+            border-bottom: 6px solid #007bff;
         }
 
         /* Estilos para resaltar texto */
-        .alerta strong { font-size: 1.4rem; display: block; margin-bottom: 10px; }
+        .alerta strong { font-size: 1.6rem; display: block; margin-bottom: 12px; }
         .estado-badge {
             display: inline-block;
-            background: rgba(255,255,255,0.7);
-            padding: 5px 15px;
-            border-radius: 20px;
-            margin-top: 10px;
+            background: rgba(255,255,255,0.8);
+            padding: 8px 18px;
+            border-radius: 25px;
+            margin-top: 15px;
             font-weight: bold;
+            border: 1px solid rgba(0,0,0,0.1);
         }
     </style>
 </head>
 <body>
 
 <?php
-// Configuramos la hora de El Salvador
+// Configuramos la hora local
 date_default_timezone_set('America/El_Salvador');
 
 include 'conexion.php';
@@ -191,6 +192,53 @@ if (isset($_POST['id_empleado']) || isset($_POST['qr_data'])) {
           </div>";
 }
 ?>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Detectamos qué tipo de alerta generó PHP
+        const esExito = document.querySelector('.alerta-exito');
+        const esError = document.querySelector('.alerta-error') || 
+                        document.querySelector('.alerta-aviso') || 
+                        document.querySelector('.alerta-info');
+
+        // Solo inicializamos el audio si hay un mensaje en pantalla
+        if (esExito || esError) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            const audioCtx = new AudioContext();
+
+            function reproducirTono(frecuencia, duracion) {
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const oscilador = audioCtx.createOscillator();
+                const ganancia = audioCtx.createGain();
+                
+                oscilador.type = 'sine'; 
+                oscilador.frequency.value = frecuencia;
+                
+                oscilador.connect(ganancia);
+                ganancia.connect(audioCtx.destination);
+                
+                oscilador.start();
+                ganancia.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duracion);
+                
+                setTimeout(() => {
+                    oscilador.stop();
+                }, duracion * 1000);
+            }
+
+            // Reproducimos el sonido según el resultado
+            if (esExito) {
+                reproducirTono(800, 0.3); // 1 pitido de éxito
+            } else if (esError) {
+                reproducirTono(400, 0.15); // 2 pitidos de error
+                setTimeout(() => {
+                    reproducirTono(400, 0.15); 
+                }, 200);
+            }
+        }
+    });
+</script>
 
 </body>
 </html>
