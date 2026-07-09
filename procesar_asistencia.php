@@ -68,7 +68,7 @@ function mostrarAlerta($tipo, $icono, $titulo, $mensaje, $badge_class, $estado) 
     <script>
         setTimeout(function() {
             window.location.href = 'scan.php';
-        }, 1500);
+        }, 2100);
     </script>";
 }
 

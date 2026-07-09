@@ -233,6 +233,42 @@ if (isset($_GET['exportar_historial_excel']) && !empty($_GET['exportar_historial
                                 <input type="text" name="puesto" class="form-control rounded-3" id="floatingPosition" placeholder="Desarrollador" required>
                                 <label for="floatingPosition">Puesto / Cargo</label>
                             </div>
+                            <div class="mb-3">
+                                <select class="form-select form-select-custom" name="estado">
+                                    <option value="Activo" selected>Estado: Activo</option>
+                                    <option value="Inactivo">Estado: Inactivo</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <select class="form-select form-select-custom" name="nivel" required>
+                                    <option value="" disabled>Seleccione un nivel...</option>
+                                    <?php 
+                                    // Cargar niveles dinámicamente si la consulta funcionó, de lo contrario usar opciones por defecto
+                                    if(isset($niveles_para_select) && mysqli_num_rows($niveles_para_select) > 0) {
+                                        while ($n = mysqli_fetch_assoc($niveles_para_select)) {
+                                            $selected = ($n['nivel'] == 'Operativo') ? 'selected' : '';
+                                            echo "<option value='".htmlspecialchars($n['nivel'])."' $selected>".htmlspecialchars($n['nivel'])."</option>";
+                                        }
+                                    } else {
+                                        echo '<option value="Operativo" selected>Operativo (Predeterminado)</option>';
+                                        echo '<option value="Supervisor">Supervisor</option>';
+                                    }
+                                    ?>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <input type="number" class="form-control" name="id_horario" placeholder="ID de Horario (Opcional)">
+                            </div>
+
+                            <div class="mb-3">
+                                <input type="tel" class="form-control" name="telefono" placeholder="Teléfono (Opcional)">
+                            </div>
+
+                            <div class="mb-4">
+                                <input type="email" class="form-control" name="correo" placeholder="Correo Electrónico (Opcional)">
+                            </div>
                             <button type="submit" name="agregar" class="btn btn-primary w-100 rounded-pill fw-bold shadow-sm py-2"><i class="bi bi-save me-2"></i>Registrar</button>
                         </form>
                     </div>
