@@ -1,222 +1,225 @@
 <?php
+session_start();
 include("conexion.php");
-if(!isset($_SESSION['usuario'])) { header("Location: login.php"); exit(); }
 
-date_default_timezone_set('America/El_Salvador');
-
-// --- FILTROS (con valores por defecto: mes actual) ---
-$fecha_inicio = isset($_GET['fecha_inicio']) && $_GET['fecha_inicio'] !== '' ? $_GET['fecha_inicio'] : date('Y-m-01');
-$fecha_fin    = isset($_GET['fecha_fin']) && $_GET['fecha_fin'] !== '' ? $_GET['fecha_fin'] : date('Y-m-d');
-$id_empleado_filtro = isset($_GET['id_empleado']) ? trim($_GET['id_empleado']) : '';
-
-// --- CONSULTA PRINCIPAL (sentencia preparada) ---
-if ($id_empleado_filtro !== '') {
-    $sql = "SELECT r.id_empleado, e.nombre_completo, e.puesto, r.fecha, r.hora_ingreso, r.hora_salida
-            FROM registros_asistencia r
-            INNER JOIN empleados e ON e.id_empleado = r.id_empleado
-            WHERE r.fecha BETWEEN ? AND ? AND r.id_empleado = ?
-            ORDER BY r.fecha DESC, r.hora_ingreso DESC";
-    $stmt = mysqli_prepare($conexion, $sql);
-    mysqli_stmt_bind_param($stmt, "sss", $fecha_inicio, $fecha_fin, $id_empleado_filtro);
-} else {
-    $sql = "SELECT r.id_empleado, e.nombre_completo, e.puesto, r.fecha, r.hora_ingreso, r.hora_salida
-            FROM registros_asistencia r
-            INNER JOIN empleados e ON e.id_empleado = r.id_empleado
-            WHERE r.fecha BETWEEN ? AND ?
-            ORDER BY r.fecha DESC, r.hora_ingreso DESC";
-    $stmt = mysqli_prepare($conexion, $sql);
-    mysqli_stmt_bind_param($stmt, "ss", $fecha_inicio, $fecha_fin);
+// Validación de sesión
+if(!isset($_SESSION['usuario'])) { 
+    header("Location: login.php"); 
+    exit(); 
 }
-mysqli_stmt_execute($stmt);
-$resultado = mysqli_stmt_get_result($stmt);
 
-// --- ACUMULADORES PARA RESUMEN ---
-$total_registros = 0;
-$total_completos = 0;
-$total_incompletos = 0;
-$segundos_totales = 0;
-$filas = [];
+// Cargar PhpSpreadsheet
+require_once 'vendor/autoload.php';
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 
-while ($fila = mysqli_fetch_assoc($resultado)) {
-    $total_registros++;
-    $horas_trabajadas = null;
+// ==========================================
+// LÓGICA PARA EXPORTAR A EXCEL (.XLSX)
+// ==========================================
+if (isset($_GET['exportar_excel']) && $_GET['exportar_excel'] == '1') {
+    if (ob_get_length()) ob_clean(); 
+    
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Monitor de Asistencia');
 
-    if (!empty($fila['hora_salida'])) {
-        $total_completos++;
-        $inicio = strtotime($fila['fecha'] . ' ' . $fila['hora_ingreso']);
-        $fin    = strtotime($fila['fecha'] . ' ' . $fila['hora_salida']);
-        if ($fin > $inicio) {
-            $segundos = $fin - $inicio;
-            $segundos_totales += $segundos;
-            $horas_trabajadas = gmdate("H:i:s", $segundos);
-        }
-    } else {
-        $total_incompletos++;
+    $sheet->setCellValue('A1', 'MARCAJE CMD');
+    $sheet->mergeCells('A1:F1');
+    $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+    $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+    $sheet->setCellValue('A2', 'Reporte generado el: ' . date('d/m/Y H:i:s'));
+    $sheet->mergeCells('A2:F2');
+    $sheet->getStyle('A2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+    $cabeceras = ['Colaborador', 'Fecha', 'Ingreso', 'Salida', 'Horas Calculadas', 'Diagnóstico de Estado'];
+    $letra = 'A';
+    foreach ($cabeceras as $cabecera) {
+        $sheet->setCellValue($letra . '4', $cabecera);
+        $letra++;
+    }
+    
+    $estiloCabecera = [
+        'font' => ['bold' => true, 'color' => ['argb' => 'FFFFFFFF']],
+        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FF0d6efd']], 
+        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+    ];
+    $sheet->getStyle('A4:F4')->applyFromArray($estiloCabecera);
+
+    $sql_export = "SELECT e.nombre_completo, r.fecha, r.hora_ingreso, r.hora_salida, r.estado_marca,
+                   ROUND(TIME_TO_SEC(TIMEDIFF(r.hora_salida, r.hora_ingreso))/3600, 2) AS horas_trabajadas
+                   FROM registros_asistencia r
+                   INNER JOIN empleados e ON r.id_empleado = e.id_empleado
+                   WHERE r.fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                   ORDER BY r.fecha DESC";
+    $resultado_export = mysqli_query($conexion, $sql_export);
+
+    $filaExcel = 5;
+    while ($fila = mysqli_fetch_assoc($resultado_export)) {
+        $sheet->setCellValue('A' . $filaExcel, $fila['nombre_completo']);
+        $sheet->setCellValue('B' . $filaExcel, date("d/m/Y", strtotime($fila['fecha'])));
+        $sheet->setCellValue('C' . $filaExcel, $fila['hora_ingreso'] ? date("h:i A", strtotime($fila['hora_ingreso'])) : '--:--');
+        $sheet->setCellValue('D' . $filaExcel, $fila['hora_salida'] ? date("h:i A", strtotime($fila['hora_salida'])) : '--:--');
+        $sheet->setCellValue('E' . $filaExcel, $fila['horas_trabajadas'] ?? '0');
+        $sheet->setCellValue('F' . $filaExcel, $fila['estado_marca']);
+        $filaExcel++;
     }
 
-    $fila['horas_trabajadas'] = $horas_trabajadas;
-    $filas[] = $fila;
+    foreach (range('A', 'F') as $col) {
+        $sheet->getColumnDimension($col)->setAutoSize(true);
+    }
+
+    $nombre_archivo = 'Reporte_Asistencias_' . date('Y_m_d') . '.xlsx';
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $nombre_archivo . '"');
+    header('Cache-Control: max-age=0');
+    
+    $writer = new Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit();
 }
-
-$horas_totales_texto = gmdate("H:i:s", $segundos_totales);
-
-// --- LISTA DE EMPLEADOS PARA EL SELECT DEL FILTRO ---
-$sql_empleados = "SELECT id_empleado, nombre_completo FROM empleados ORDER BY nombre_completo ASC";
-$resultado_empleados = mysqli_query($conexion, $sql_empleados);
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Reportes de Asistencia</title>
+    <title>Sist.Control - Reportes</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #f4f6f9; }
+        .navbar-custom { background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%); }
+        .table-custom th { background-color: #f8f9fa; color: #6c757d; font-size: 0.85rem; text-transform: uppercase; border-bottom: none; }
+    </style>
 </head>
-<body class="bg-light">
+<body>
 
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
+    <nav class="navbar navbar-expand-lg navbar-dark navbar-custom mb-4 shadow-sm">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="index.php"><i class="bi bi-upc-scan"></i> AsistenciaQR</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
+            <a class="navbar-brand fw-bold" href="index.php"><i class="bi bi-upc-scan me-2"></i>Sist.Control</a>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item"><a class="nav-link" href="index.php">Dashboard</a></li>
-                    <li class="nav-item"><a class="nav-link" href="empleados.php">Empleados</a></li>
+                    <li class="nav-item"><a class="nav-link" href="empleados.php">Personal</a></li>
                     <li class="nav-item"><a class="nav-link" href="scan.php">Escáner QR</a></li>
-                    <li class="nav-item"><a class="nav-link active" href="reportes.php">Reportes</a></li>
-                    <li class="nav-item"><a class="nav-link" href="permisos.php">Permisos</a></li>
+                    <li class="nav-item"><a class="nav-link active fw-semibold" href="reportes.php">Analítica</a></li>
                 </ul>
-                <div class="d-flex align-items-center">
-                    <span class="text-white me-3">Hola, <b><?php echo htmlspecialchars($_SESSION['nombre_admin'] ?? $_SESSION['usuario']); ?></b></span>
-                    <a href="logout.php" class="btn btn-danger btn-sm">Cerrar Sesión</a>
-                </div>
             </div>
         </div>
     </nav>
 
-    <div class="container">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2 class="mb-0">Reportes de Asistencia</h2>
-            <form method="GET" action="exportar_excel.php" class="d-inline">
-                <input type="hidden" name="fecha_inicio" value="<?php echo htmlspecialchars($fecha_inicio); ?>">
-                <input type="hidden" name="fecha_fin" value="<?php echo htmlspecialchars($fecha_fin); ?>">
-                <input type="hidden" name="id_empleado" value="<?php echo htmlspecialchars($id_empleado_filtro); ?>">
-                <button type="submit" class="btn btn-success">
-                    <i class="bi bi-file-earmark-excel"></i> Exportar a Excel
-                </button>
-            </form>
-        </div>
-
-        <!-- FILTROS -->
-        <div class="card shadow-sm mb-4">
-            <div class="card-body">
-                <form method="GET" action="reportes.php" class="row g-3 align-items-end">
-                    <div class="col-md-3">
-                        <label class="form-label">Fecha inicio</label>
-                        <input type="date" name="fecha_inicio" class="form-control" value="<?php echo htmlspecialchars($fecha_inicio); ?>">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Fecha fin</label>
-                        <input type="date" name="fecha_fin" class="form-control" value="<?php echo htmlspecialchars($fecha_fin); ?>">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Empleado</label>
-                        <select name="id_empleado" class="form-select">
-                            <option value="">-- Todos los empleados --</option>
-                            <?php while ($emp = mysqli_fetch_assoc($resultado_empleados)) { ?>
-                                <option value="<?php echo htmlspecialchars($emp['id_empleado']); ?>"
-                                    <?php echo ($id_empleado_filtro === $emp['id_empleado']) ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($emp['id_empleado'] . ' - ' . $emp['nombre_completo']); ?>
-                                </option>
-                            <?php } ?>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i> Filtrar</button>
-                    </div>
-                </form>
+    <div class="container mb-5">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4">
+            <div>
+                <h2 class="fw-bold text-dark m-0">Monitor de Asistencia</h2>
+                <p class="text-muted m-0">Análisis de la última semana (7 días)</p>
+            </div>
+            <div class="mt-3 mt-md-0">
+                <a href="reportes.php?exportar_excel=1" class="btn btn-success rounded-pill fw-bold shadow-sm px-4"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Descargar Excel</a>
             </div>
         </div>
 
-        <!-- TARJETAS RESUMEN -->
-        <div class="row mb-4">
-            <div class="col-md-3 mb-3">
-                <div class="card text-white shadow-sm" style="background-color:#0d6efd;">
-                    <div class="card-body">
-                        <div><i class="bi bi-clipboard-data"></i> Total Registros</div>
-                        <div class="display-6 fw-bold"><?php echo $total_registros; ?></div>
-                    </div>
-                </div>
+        <div class="card shadow-sm rounded-4 border-0 mb-4">
+            <div class="card-header bg-white border-0 pt-4 pb-2 px-4">
+                <h5 class="fw-bold text-primary"><i class="bi bi-bar-chart-fill me-2"></i>Resumen de Horas Acumuladas (Últimos 7 días)</h5>
             </div>
-            <div class="col-md-3 mb-3">
-                <div class="card text-white shadow-sm" style="background-color:#198754;">
-                    <div class="card-body">
-                        <div><i class="bi bi-check-circle"></i> Jornadas Completas</div>
-                        <div class="display-6 fw-bold"><?php echo $total_completos; ?></div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card text-dark shadow-sm" style="background-color:#ffc107;">
-                    <div class="card-body">
-                        <div><i class="bi bi-exclamation-triangle"></i> Sin Salida Registrada</div>
-                        <div class="display-6 fw-bold"><?php echo $total_incompletos; ?></div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card text-white shadow-sm" style="background-color:#6c757d;">
-                    <div class="card-body">
-                        <div><i class="bi bi-hourglass-split"></i> Horas Totales</div>
-                        <div class="display-6 fw-bold"><?php echo $horas_totales_texto; ?></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- TABLA DE DETALLE -->
-        <div class="card shadow-sm mb-5">
-            <div class="card-body">
-                <table class="table table-striped table-hover align-middle">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Código</th>
-                            <th>Nombre</th>
-                            <th>Puesto</th>
-                            <th>Fecha</th>
-                            <th>Entrada</th>
-                            <th>Salida</th>
-                            <th>Horas Trabajadas</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (count($filas) === 0) { ?>
-                            <tr><td colspan="7" class="text-center text-muted py-4">No hay registros para el rango seleccionado.</td></tr>
-                        <?php } ?>
-                        <?php foreach ($filas as $fila) { ?>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-custom align-middle mb-0">
+                        <thead class="bg-light">
                             <tr>
-                                <td><b><?php echo htmlspecialchars($fila['id_empleado']); ?></b></td>
-                                <td><?php echo htmlspecialchars($fila['nombre_completo']); ?></td>
-                                <td><?php echo htmlspecialchars($fila['puesto']); ?></td>
-                                <td><?php echo htmlspecialchars($fila['fecha']); ?></td>
-                                <td><?php echo htmlspecialchars($fila['hora_ingreso']); ?></td>
-                                <td>
-                                    <?php if ($fila['hora_salida']) {
-                                        echo htmlspecialchars($fila['hora_salida']);
-                                    } else { ?>
-                                        <span class="badge bg-warning text-dark">Pendiente</span>
-                                    <?php } ?>
-                                </td>
-                                <td><?php echo $fila['horas_trabajadas'] ? htmlspecialchars($fila['horas_trabajadas']) : '—'; ?></td>
+                                <th class="ps-4">Colaborador</th>
+                                <th class="pe-4">Total de Horas Trabajadas</th>
                             </tr>
-                        <?php } ?>
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody class="border-top-0">
+                            <?php
+                            $sql_resumen = "SELECT e.nombre_completo,
+                                           ROUND(SUM(TIME_TO_SEC(TIMEDIFF(r.hora_salida, r.hora_ingreso)))/3600, 2) AS total_horas
+                                           FROM empleados e
+                                           INNER JOIN registros_asistencia r ON e.id_empleado = r.id_empleado
+                                           WHERE r.fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                                             AND r.hora_salida IS NOT NULL
+                                           GROUP BY e.id_empleado, e.nombre_completo
+                                           ORDER BY total_horas DESC";
+                            
+                            $resultado_resumen = mysqli_query($conexion, $sql_resumen);
+                            
+                            if(mysqli_num_rows($resultado_resumen) > 0) {
+                                while($fila_res = mysqli_fetch_assoc($resultado_resumen)) {
+                                    echo "<tr>";
+                                    echo "<td class='ps-4 fw-semibold text-dark'><i class='bi bi-person-circle text-muted me-2'></i>" . htmlspecialchars($fila_res['nombre_completo']) . "</td>";
+                                    echo "<td class='pe-4'><span class='badge bg-primary rounded-pill shadow-sm px-3 fs-6'>" . ($fila_res['total_horas'] ?? '0.00') . " hrs</span></td>";
+                                    echo "</tr>";
+                                }
+                            } else {
+                                echo "<tr><td colspan='2' class='text-center py-4 text-muted'>No hay horas registradas en los últimos 7 días.</td></tr>";
+                            }
+                            ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="card shadow-sm rounded-4 border-0">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-custom align-middle mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4">Colaborador</th>
+                                <th>Fecha</th>
+                                <th>Ingreso</th>
+                                <th>Salida</th>
+                                <th>Horas Calculadas</th>
+                                <th class="pe-4">Diagnóstico de Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody class="border-top-0">
+                            <?php
+                            $sql_rep = "SELECT e.nombre_completo, r.fecha, r.hora_ingreso, r.hora_salida, r.estado_marca,
+                                        ROUND(TIME_TO_SEC(TIMEDIFF(r.hora_salida, r.hora_ingreso))/3600, 2) AS horas_trabajadas
+                                        FROM registros_asistencia r
+                                        INNER JOIN empleados e ON r.id_empleado = e.id_empleado
+                                        WHERE r.fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                                        ORDER BY r.fecha DESC";
+                            $resultado_rep = mysqli_query($conexion, $sql_rep);
+                            while($fila = mysqli_fetch_assoc($resultado_rep)) {
+                                
+                                $estado = htmlspecialchars($fila['estado_marca']);
+                                $badges_html = "";
+                                
+                                $etiquetas = explode("|", $estado);
+                                foreach($etiquetas as $etiqueta) {
+                                    $etiq = trim($etiqueta);
+                                    if(str_contains(strtolower($etiq), 'tarde') || str_contains(strtolower($etiq), 'excedió')) {
+                                        $badges_html .= "<span class='badge text-bg-danger rounded-pill me-1'>$etiq</span>";
+                                    } elseif(str_contains(strtolower($etiq), 'temprana')) {
+                                        $badges_html .= "<span class='badge text-bg-warning text-dark rounded-pill me-1'>$etiq</span>";
+                                    } elseif(str_contains(strtolower($etiq), 'tiempo') || str_contains(strtolower($etiq), 'extra')) {
+                                        $badges_html .= "<span class='badge text-bg-success rounded-pill me-1'>$etiq</span>";
+                                    } else {
+                                        $badges_html .= "<span class='badge bg-body-secondary text-dark border rounded-pill me-1'>$etiq</span>";
+                                    }
+                                }
+
+                                echo "<tr>";
+                                echo "<td class='ps-4 fw-semibold text-dark'><i class='bi bi-person-circle text-muted me-2'></i>" . htmlspecialchars($fila['nombre_completo']) . "</td>";
+                                echo "<td><span class='text-muted'>" . date("d/m/Y", strtotime($fila['fecha'])) . "</span></td>";
+                                echo "<td><span class='fw-bold text-success'>" . ($fila['hora_ingreso'] ? date("h:i A", strtotime($fila['hora_ingreso'])) : '--:--') . "</span></td>";
+                                echo "<td><span class='fw-bold text-primary'>" . ($fila['hora_salida'] ? date("h:i A", strtotime($fila['hora_salida'])) : '--:--') . "</span></td>";
+                                echo "<td><span class='badge bg-dark rounded-pill shadow-sm px-3'>" . ($fila['horas_trabajadas'] ?? '0') . " hrs</span></td>";
+                                echo "<td class='pe-4'>$badges_html</td>";
+                                echo "</tr>";
+                            }
+                            ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
-
 </body>
 </html>

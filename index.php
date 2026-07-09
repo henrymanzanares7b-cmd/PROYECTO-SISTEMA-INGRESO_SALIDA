@@ -49,14 +49,14 @@ $resultado_horarios = mysqli_query($conexion, $query_horarios);
         
         .bg-blue { background-color: #0d6efd; }
         .bg-green { background-color: #198754; }
-        .bg-yellow { background-color: #ffc107; color: #212529 !important; }
+        .bg-yellow { background-color: #ffc107; color: #272829 !important; }
     </style>
 </head>
 <body class="bg-light">
 
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="index.php"><i class="bi bi-upc-scan"></i> AsistenciaQR</a>
+            <a class="navbar-brand fw-bold" href="index.php"><i class="bi bi-upc-scan"></i> Sist.Control</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -65,8 +65,9 @@ $resultado_horarios = mysqli_query($conexion, $query_horarios);
                     <li class="nav-item"><a class="nav-link active" href="index.php">Dashboard</a></li>
                     <li class="nav-item"><a class="nav-link" href="empleados.php">Empleados</a></li>
                     <li class="nav-item"><a class="nav-link" href="scan.php">Escáner QR</a></li>
-                    <li class="nav-item"><a class="nav-link" href="reportes.php">Reportes</a></li>
+                    <li class="nav-item"><a class="nav-link" href="reportes.php">Análitica</a></li>
                     <li class="nav-item"><a class="nav-link" href="permisos.php">Permisos</a></li>
+                    <li class="nav-item"><a class="nav-link text-warning" href="auditoria_inasistencias.php">Auditoría</a></li>
                 </ul>
                 <div class="d-flex align-items-center">
                     <span class="text-white me-3">Hola, <b><?php echo htmlspecialchars($_SESSION['nombre_admin'] ?? $_SESSION['usuario']); ?></b></span>
@@ -131,7 +132,6 @@ $resultado_horarios = mysqli_query($conexion, $query_horarios);
                         <?php 
                         if (mysqli_num_rows($resultado_horarios) > 0) {
                             while ($horario = mysqli_fetch_assoc($resultado_horarios)) { 
-                                // Formateo de las horas para una lectura más cómoda (Ej: 08:00 AM)
                                 $hora_in = date("h:i A", strtotime($horario['hora_entrada']));
                                 $hora_out = date("h:i A", strtotime($horario['hora_salida']));
                         ?>

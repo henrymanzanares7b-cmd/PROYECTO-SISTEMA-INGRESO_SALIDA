@@ -38,351 +38,179 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 }
 ?>
 <!DOCTYPE html>
-<html lang="es" class="h-100">
+<html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AuraSync | Sistema de Control de Acceso</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
-<style>
-  :root{
-    --navy-950:#0c1024;
-    --navy-900:#121735;
-    --navy-800:#1a2148;
-    --accent-500:#5b6ff2;
-    --accent-400:#7c8bf5;
-    --teal-400:#2dd4bf;
-    --text-muted:#8a90a8;
-    --border-soft:#e7e9f2;
-    --ink:#1c2033;
-  }
-  *{ box-sizing:border-box; }
-  html,body{ height:100%; margin:0; }
-  body{
-    font-family:'Manrope', sans-serif;
-    background:#e9ebf3;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    min-height:100vh;
-    padding:24px;
-  }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MARCAJE CMD | Acceso Administrativo</title>
+    <!-- Usamos Bootstrap para mantener la línea corporativa del resto de tu sistema -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    
+    <style>
+        body {
+    /* Fondo azul profesional con un degradado de esquina a esquina */
+    background: linear-gradient(135deg, #eef2f7 0%, #dbe4ef 100%);
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: system-ui, -apple-system, sans-serif;
+}
 
-  .auth-card{
-    width:100%;
-    max-width:920px;
-    min-height:560px;
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    background:#fff;
-    border-radius:20px;
-    overflow:hidden;
-    box-shadow:0 30px 60px -20px rgba(12,16,36,0.35);
-  }
+/* Tip extra para que el Login se vea más "profesional" */
+.login-card {
+    border: 1px solid rgba(0,0,0,0.05); /* Borde casi imperceptible para definir mejor el borde */
+}
 
-  /* ---------- Panel izquierdo ---------- */
-  .brand-panel{
-    background:linear-gradient(160deg, var(--navy-900) 0%, var(--navy-950) 100%);
-    color:#fff;
-    padding:44px 40px;
-    display:flex;
-    flex-direction:column;
-    justify-content:space-between;
-    position:relative;
-    overflow:hidden;
-  }
-  .brand-mark{
-    display:flex;
-    align-items:center;
-    gap:10px;
-    font-family:'Sora', sans-serif;
-    font-weight:700;
-    font-size:19px;
-    letter-spacing:0.3px;
-    z-index:2;
-  }
-  .brand-mark svg{ flex-shrink:0; }
-  .brand-mark .light{ font-weight:400; opacity:0.85; }
+        .login-card {
+            width: 100%;
+            max-width: 420px;
+            border: none;
+            border-radius: 1rem;
+            box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.08);
+            background: #ffffff;
+            padding: 2.5rem 2rem;
+        }
 
-  .brand-copy{ z-index:2; margin-top:20px; }
-  .brand-copy h1{
-    font-family:'Sora', sans-serif;
-    font-size:26px;
-    font-weight:800;
-    letter-spacing:0.5px;
-    margin:0 0 4px;
-  }
-  .brand-copy h2{
-    font-family:'Sora', sans-serif;
-    font-size:17px;
-    font-weight:600;
-    margin:0 0 10px;
-    color:#dfe3f7;
-  }
-  .brand-copy p{
-    font-size:13.5px;
-    line-height:1.55;
-    color:var(--text-muted);
-    max-width:270px;
-    margin:0;
-  }
+        .brand-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+            color: white;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            margin: 0 auto 1.2rem auto;
+            box-shadow: 0 0.25rem 0.5rem rgba(13, 110, 253, 0.2);
+        }
 
-  .brand-visual{
-    z-index:2;
-    margin-top:28px;
-    height:150px;
-    border-radius:14px;
-    background:rgba(255,255,255,0.03);
-    border:1px solid rgba(255,255,255,0.06);
-    position:relative;
-    overflow:hidden;
-    display:flex;
-    align-items:flex-end;
-    justify-content:center;
-  }
-  .brand-visual .glow{
-    position:absolute;
-    width:150px; height:150px;
-    left:50%; top:58%;
-    transform:translate(-50%,-50%);
-    background:radial-gradient(circle, rgba(93,111,242,0.55) 0%, rgba(45,212,191,0.25) 45%, transparent 72%);
-    filter:blur(6px);
-  }
-  .brand-visual .ring{
-    position:absolute;
-    width:64px; height:64px;
-    left:50%; top:70%;
-    transform:translate(-50%,-50%);
-    border-radius:50%;
-    border:2px solid rgba(124,139,245,0.55);
-    box-shadow:0 0 24px rgba(93,111,242,0.55);
-  }
-  .brand-visual svg{ position:relative; z-index:2; padding-bottom:10px; }
+        .form-floating > label {
+            color: #6c757d;
+        }
+        
+        .form-control:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+        }
 
-  /* ---------- Panel derecho ---------- */
-  .form-panel{
-    padding:48px 44px;
-    display:flex;
-    flex-direction:column;
-    justify-content:center;
-  }
-  .form-panel label{
-    display:block;
-    font-size:12.5px;
-    font-weight:700;
-    color:var(--ink);
-    margin-bottom:6px;
-  }
-  .form-panel .field{ margin-bottom:16px; }
-  .form-panel input[type="text"],
-  .form-panel input[type="password"]{
-    width:100%;
-    padding:11px 14px;
-    border:1.5px solid var(--border-soft);
-    border-radius:9px;
-    font-size:14px;
-    font-family:'Manrope', sans-serif;
-    color:var(--ink);
-    background:#fbfbfd;
-    outline:none;
-    transition:border-color .15s ease, box-shadow .15s ease;
-  }
-  .form-panel input:focus{
-    border-color:var(--accent-500);
-    box-shadow:0 0 0 3px rgba(91,111,242,0.15);
-    background:#fff;
-  }
+        .btn-corporate {
+            background: #0d6efd;
+            color: white;
+            font-weight: 600;
+            padding: 0.8rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s ease;
+        }
 
-  .btn-enter{
-    width:100%;
-    border:none;
-    background:linear-gradient(135deg, var(--accent-500), #4a5adf);
-    color:#fff;
-    font-weight:700;
-    font-size:13.5px;
-    letter-spacing:0.3px;
-    padding:13px;
-    border-radius:9px;
-    cursor:pointer;
-    margin-top:6px;
-    transition:filter .15s ease, transform .1s ease;
-  }
-  .btn-enter:hover{ filter:brightness(1.08); }
-  .btn-enter:active{ transform:translateY(1px); }
+        .btn-corporate:hover {
+            background: #0a58ca;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2);
+        }
 
-  .row-between{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    margin-top:14px;
-    font-size:12.5px;
-  }
-  .row-between label{ display:flex; align-items:center; gap:6px; font-weight:500; color:#4b5063; margin:0; }
-  .row-between a{ color:var(--accent-500); text-decoration:none; font-weight:600; }
-  .row-between a:hover{ text-decoration:underline; }
+        /* Alerta Flotante (Toast) */
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1055;
+        }
 
-  .divider{
-    display:flex;
-    align-items:center;
-    gap:10px;
-    margin:26px 0 16px;
-    font-size:11.5px;
-    color:var(--text-muted);
-    text-transform:uppercase;
-    letter-spacing:0.4px;
-  }
-  .divider::before, .divider::after{
-    content:"";
-    flex:1;
-    height:1px;
-    background:var(--border-soft);
-  }
+        .custom-toast {
+            background: #fff;
+            border-left: 5px solid #dc3545;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+            border-radius: 0.5rem;
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transform: translateX(120%);
+            transition: transform 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
 
-  .quick-access{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:12px;
-  }
-  .quick-btn{
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    gap:6px;
-    padding:14px 8px;
-    border:1.5px solid var(--border-soft);
-    border-radius:10px;
-    background:#fff;
-    cursor:pointer;
-    text-align:center;
-    transition:border-color .15s ease, background .15s ease;
-  }
-  .quick-btn:hover{ border-color:var(--accent-500); background:#f7f8fe; }
-  .quick-btn .icon-wrap{
-    width:36px; height:36px;
-    border-radius:9px;
-    display:flex; align-items:center; justify-content:center;
-    background:#eef0fb;
-  }
-  .quick-btn strong{ font-size:12.5px; color:var(--ink); font-weight:700; }
-  .quick-btn span{ font-size:11px; color:var(--text-muted); }
+        .custom-toast.show {
+            transform: translateX(0);
+        }
 
-  .alert-error{
-    background:#fdecec;
-    border:1px solid #f6c2c2;
-    color:#b3261e;
-    font-size:12.5px;
-    padding:10px 12px;
-    border-radius:8px;
-    margin-bottom:16px;
-    text-align:center;
-  }
+        .custom-toast i {
+            font-size: 1.5rem;
+            color: #dc3545;
+        }
 
-  @media (max-width:760px){
-    .auth-card{ grid-template-columns:1fr; }
-    .brand-panel{ display:none; }
-    .form-panel{ padding:36px 26px; }
-  }
-</style>
+        .custom-toast .fw-bold {
+            color: #212529;
+            margin-bottom: 0.2rem;
+            font-size: 0.95rem;
+        }
+
+        .custom-toast .text-muted {
+            font-size: 0.85rem;
+        }
+    </style>
 </head>
 <body>
 
-<div class="auth-card">
-
-  <!-- Panel izquierdo: marca -->
-  <div class="brand-panel">
-    <div class="brand-mark">
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-        <path d="M12 2L22 20H2L12 2Z" fill="url(#g1)"/>
-        <defs>
-          <linearGradient id="g1" x1="2" y1="2" x2="22" y2="20" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#7c8bf5"/>
-            <stop offset="1" stop-color="#2dd4bf"/>
-          </linearGradient>
-        </defs>
-      </svg>
-      AURA<span class="light">SYNC</span>
-    </div>
-
-    <div class="brand-copy">
-      <h1>BIENVENIDO</h1>
-      <h2>Sistema de Control de Acceso</h2>
-      <p>Gestión inteligente de entradas y salidas para el personal corporativo.</p>
-    </div>
-
-    <div class="brand-visual">
-      <div class="glow"></div>
-      <div class="ring"></div>
-      <svg width="180" height="70" viewBox="0 0 180 70">
-        <polyline points="0,50 20,42 40,46 60,28 80,34 100,18 120,24 140,10 160,16 180,4"
-          fill="none" stroke="#2dd4bf" stroke-width="2"/>
-        <rect x="10" y="55" width="6" height="10" fill="#7c8bf5" opacity="0.8"/>
-        <rect x="30" y="48" width="6" height="17" fill="#7c8bf5" opacity="0.8"/>
-        <rect x="50" y="40" width="6" height="25" fill="#7c8bf5" opacity="0.8"/>
-        <rect x="70" y="45" width="6" height="20" fill="#7c8bf5" opacity="0.8"/>
-        <rect x="90" y="30" width="6" height="35" fill="#7c8bf5" opacity="0.8"/>
-        <rect x="110" y="35" width="6" height="30" fill="#7c8bf5" opacity="0.8"/>
-        <rect x="130" y="20" width="6" height="45" fill="#7c8bf5" opacity="0.8"/>
-      </svg>
-    </div>
-  </div>
-
-  <!-- Panel derecho: formulario -->
-  <div class="form-panel">
-
-    <?php if (!empty($error)): ?>
-      <div class="alert-error"><?php echo htmlspecialchars($error); ?></div>
-    <?php endif; ?>
-
-    <form method="POST" action="">
-      <div class="field">
-        <label for="usuario">USUARIO</label>
-        <input type="text" id="usuario" name="usuario" placeholder="ej. gerencia o administracion" required autocomplete="off">
-      </div>
-
-      <div class="field">
-        <label for="password">Contraseña</label>
-        <input type="password" id="password" name="password" placeholder="••••••••" required>
-      </div>
-
-      <button class="btn-enter" type="submit">INGRESAR AL SISTEMA</button>
-
-      <div class="row-between">
-        <label><input type="checkbox" name="recordarme"> Recordarme</label>
-        <a href="#">¿Olvidaste tu contraseña?</a>
-      </div>
-    </form>
-
-    <div class="divider">O usar acceso rápido</div>
-
-    <div class="quick-access">
-      <button type="button" class="quick-btn" onclick="alert('Función de huella dactilar próximamente.');">
-        <div class="icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5b6ff2" stroke-width="1.8">
-            <path d="M12 2a5 5 0 0 0-5 5v2a5 5 0 0 0 10 0V7a5 5 0 0 0-5-5Z"/>
-            <path d="M7 12v1a5 5 0 0 0 10 0v-1M4 12v2a8 8 0 0 0 16 0v-2"/>
-          </svg>
+    <div class="login-card">
+        <div class="text-center mb-4">
+            <div class="brand-icon">
+                <i class="bi bi-buildings-fill"></i>
+            </div>
+            <h2 class="fw-bold text-dark mb-1">MARCAJE CMD</h2>
+            <p class="text-muted small">Portal Administrativo</p>
         </div>
-        <strong>Huella Dactilar</strong>
-        <span>Biometría</span>
-      </button>
 
-      <button type="button" class="quick-btn" onclick="alert('Función de escaneo QR próximamente.');">
-        <div class="icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5b6ff2" stroke-width="1.8">
-            <rect x="3" y="3" width="7" height="7"/>
-            <rect x="14" y="3" width="7" height="7"/>
-            <rect x="3" y="14" width="7" height="7"/>
-            <path d="M14 14h3v3h-3zM19 14h2v2h-2zM14 19h2v2h-2zM19 19h2v2h-2z"/>
-          </svg>
+        <form method="POST" action="">
+            <div class="form-floating mb-3">
+                <input type="text" class="form-control" id="usuario" name="usuario" placeholder="Usuario" required autocomplete="off">
+                <label for="usuario"><i class="bi bi-person-fill me-2"></i>Usuario asignado</label>
+            </div>
+            
+            <div class="form-floating mb-4">
+                <input type="password" class="form-control" id="password" name="password" placeholder="Contraseña" required>
+                <label for="password"><i class="bi bi-lock-fill me-2"></i>Contraseña</label>
+            </div>
+
+            <button class="btn btn-corporate w-100" type="submit">Ingresar al Sistema</button>
+        </form>
+        
+        <div class="text-center mt-4">
+            <small class="text-muted">© <?php echo date('Y'); ?> MARCAJE CMD. Todos los derechos reservados.</small>
         </div>
-        <strong>Código QR</strong>
-        <span>Escanear QR</span>
-      </button>
     </div>
 
-  </div>
-</div>
+    <!-- Contenedor del Toast para Errores -->
+    <div class="toast-container">
+        <div class="custom-toast" id="errorToast">
+            <i class="bi bi-x-circle-fill"></i>
+            <div>
+                <div class="fw-bold">Error de Autenticación</div>
+                <div class="text-muted" id="toastMessage"></div>
+            </div>
+        </div>
+    </div>
 
+    <script>
+        // Mostrar Toast si hay error desde PHP
+        const errorPhp = "<?php echo addslashes($error); ?>";
+        
+        if (errorPhp !== "") {
+            const toast = document.getElementById('errorToast');
+            document.getElementById('toastMessage').textContent = errorPhp;
+            
+            // Mostrar con animación
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 100);
+
+            // Ocultar automáticamente después de 4 segundos
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 4000);
+        }
+    </script>
 </body>
 </html>

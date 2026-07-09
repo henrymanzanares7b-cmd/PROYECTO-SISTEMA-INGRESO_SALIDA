@@ -1,10 +1,18 @@
 <?php
+// Cargar el autoloader de Composer para habilitar PhpSpreadsheet
+require 'vendor/autoload.php';
 include("conexion.php");
+
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+
 if(!isset($_SESSION['usuario'])) { header("Location: login.php"); exit(); }
 
 date_default_timezone_set('America/El_Salvador');
 
-// --- FILTROS (mismos parámetros que reportes.php) ---
+// --- FILTROS ---
 $fecha_inicio = isset($_GET['fecha_inicio']) && $_GET['fecha_inicio'] !== '' ? $_GET['fecha_inicio'] : date('Y-m-01');
 $fecha_fin    = isset($_GET['fecha_fin']) && $_GET['fecha_fin'] !== '' ? $_GET['fecha_fin'] : date('Y-m-d');
 $id_empleado_filtro = isset($_GET['id_empleado']) ? trim($_GET['id_empleado']) : '';
@@ -29,62 +37,85 @@ if ($id_empleado_filtro !== '') {
 mysqli_stmt_execute($stmt);
 $resultado = mysqli_stmt_get_result($stmt);
 
-// --- CONSTRUIR FILAS Y CALCULAR HORAS TRABAJADAS ---
-$filas = [];
-while ($fila = mysqli_fetch_assoc($resultado)) {
-    $horas_trabajadas = '';
-    if (!empty($fila['hora_salida'])) {
-        $inicio = strtotime($fila['fecha'] . ' ' . $fila['hora_ingreso']);
-        $fin    = strtotime($fila['fecha'] . ' ' . $fila['hora_salida']);
-        if ($fin > $inicio) {
-            $horas_trabajadas = gmdate("H:i:s", $fin - $inicio);
-        }
-    }
-    $fila['horas_trabajadas'] = $horas_trabajadas;
-    $filas[] = $fila;
+// --- INICIALIZAR EL DOCUMENTO EXCEL ---
+$spreadsheet = new Spreadsheet();
+$sheet = $spreadsheet->getActiveSheet();
+$sheet->setTitle('Asistencia');
+
+// --- ENCABEZADOS CORPORATIVOS ---
+// Fila 1: Título Principal
+$sheet->setCellValue('A1', 'MARCAJE CMD');
+$sheet->mergeCells('A1:G1'); // Unir celdas de la A a la G
+$sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+$sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+// Fila 2: Fecha de Generación
+$fecha_actual = date('d/m/Y H:i:s');
+$sheet->setCellValue('A2', 'Reporte generado el: ' . $fecha_actual);
+$sheet->mergeCells('A2:G2');
+$sheet->getStyle('A2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+// Fila 4: Cabeceras de la Tabla
+$cabeceras = ['Código', 'Nombre', 'Puesto', 'Fecha', 'Hora Entrada', 'Hora Salida', 'Horas Trabajadas'];
+$letraColumna = 'A';
+foreach ($cabeceras as $cabecera) {
+    $sheet->setCellValue($letraColumna . '4', $cabecera);
+    $letraColumna++;
 }
 
-// --- NOMBRE DE ARCHIVO ---
-$nombre_archivo = "asistencia_" . $fecha_inicio . "_a_" . $fecha_fin . ".xls";
+// Dar estilo a las cabeceras (Fondo oscuro, texto blanco, negrita)
+$estiloCabecera = [
+    'font' => ['bold' => true, 'color' => ['argb' => 'FFFFFFFF']],
+    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FF212529']],
+    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+];
+$sheet->getStyle('A4:G4')->applyFromArray($estiloCabecera);
 
-// --- CABECERAS PARA DESCARGA COMO EXCEL ---
-header("Content-Type: application/vnd.ms-excel; charset=UTF-8");
-header("Content-Disposition: attachment; filename=\"$nombre_archivo\"");
-header("Pragma: no-cache");
-header("Expires: 0");
+// --- RECORRER DATOS Y LLENAR CELDAS ---
+$filaExcel = 5; // Empezamos a imprimir datos desde la fila 5
 
-// BOM para que Excel interprete correctamente los acentos en UTF-8
-echo "\xEF\xBB\xBF";
+if (mysqli_num_rows($resultado) === 0) {
+    $sheet->setCellValue('A5', 'No hay registros para el rango seleccionado.');
+    $sheet->mergeCells('A5:G5');
+} else {
+    while ($fila = mysqli_fetch_assoc($resultado)) {
+        $horas_trabajadas = '—';
+        if (!empty($fila['hora_salida'])) {
+            $inicio = strtotime($fila['fecha'] . ' ' . $fila['hora_ingreso']);
+            $fin    = strtotime($fila['fecha'] . ' ' . $fila['hora_salida']);
+            if ($fin > $inicio) {
+                $horas_trabajadas = gmdate("H:i:s", $fin - $inicio);
+            }
+        }
+
+        $sheet->setCellValue('A' . $filaExcel, $fila['id_empleado']);
+        $sheet->setCellValue('B' . $filaExcel, $fila['nombre_completo']);
+        $sheet->setCellValue('C' . $filaExcel, $fila['puesto']);
+        $sheet->setCellValue('D' . $filaExcel, $fila['fecha']);
+        $sheet->setCellValue('E' . $filaExcel, $fila['hora_ingreso']);
+        $sheet->setCellValue('F' . $filaExcel, $fila['hora_salida'] ?? 'Pendiente');
+        $sheet->setCellValue('G' . $filaExcel, $horas_trabajadas);
+        
+        $filaExcel++;
+    }
+}
+
+// --- AUTOAJUSTAR ANCHO DE COLUMNAS ---
+// Esta es la clave para evitar los ########
+$columnasDimensionar = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+foreach ($columnasDimensionar as $colID) {
+    $sheet->getColumnDimension($colID)->setAutoSize(true);
+}
+
+// --- DESCARGAR EL ARCHIVO ---
+$nombre_archivo = "asistencia_" . $fecha_inicio . "_a_" . $fecha_fin . ".xlsx";
+
+header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+header('Content-Disposition: attachment;filename="' . $nombre_archivo . '"');
+header('Cache-Control: max-age=0');
+
+// Escribir el archivo en la salida del navegador
+$writer = new Xlsx($spreadsheet);
+$writer->save('php://output');
+exit();
 ?>
-<table border="1">
-    <thead>
-        <tr>
-            <th colspan="7" style="font-size:14px;">Reporte de Asistencia (<?php echo htmlspecialchars($fecha_inicio); ?> a <?php echo htmlspecialchars($fecha_fin); ?>)</th>
-        </tr>
-        <tr style="background-color:#212529; color:#ffffff; font-weight:bold;">
-            <th>Código</th>
-            <th>Nombre</th>
-            <th>Puesto</th>
-            <th>Fecha</th>
-            <th>Hora Entrada</th>
-            <th>Hora Salida</th>
-            <th>Horas Trabajadas</th>
-        </tr>
-    </thead>
-    <tbody>
-        <?php if (count($filas) === 0) { ?>
-        <tr><td colspan="7">No hay registros para el rango seleccionado.</td></tr>
-        <?php } ?>
-        <?php foreach ($filas as $fila) { ?>
-        <tr>
-            <td><?php echo htmlspecialchars($fila['id_empleado']); ?></td>
-            <td><?php echo htmlspecialchars($fila['nombre_completo']); ?></td>
-            <td><?php echo htmlspecialchars($fila['puesto']); ?></td>
-            <td><?php echo htmlspecialchars($fila['fecha']); ?></td>
-            <td><?php echo htmlspecialchars($fila['hora_ingreso']); ?></td>
-            <td><?php echo htmlspecialchars($fila['hora_salida'] ?? 'Pendiente'); ?></td>
-            <td><?php echo htmlspecialchars($fila['horas_trabajadas'] !== '' ? $fila['horas_trabajadas'] : '—'); ?></td>
-        </tr>
-        <?php } ?>
-    </tbody>
-</table>

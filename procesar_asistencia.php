@@ -3,242 +3,247 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Registro de Asistencia</title>
+    <title>Sist.Control - Registro</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <style>
-        /* Estilos generales para centrar TODO en la pantalla */
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f0f2f5;
-            display: flex;
-            justify-content: center; /* Centra horizontalmente */
-            align-items: center;     /* Centra verticalmente */
-            height: 100vh;           /* Ocupa el 100% del alto de la pantalla */
-            margin: 0;
-        }
-        
-        /* Estilo base para la tarjeta de notificación */
-        .alerta {
-            padding: 30px 40px;
-            border-radius: 12px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-            font-size: 1.3rem;
-            text-align: center;
-            max-width: 500px;
-            width: 90%;
-            background-color: white;
-            line-height: 1.5;
-        }
-
-        /* Colores según el estado del mensaje */
-        .alerta-exito {
-            background-color: #d4edda;
-            color: #155724;
-            border-bottom: 6px solid #28a745;
-        }
-        .alerta-aviso {
-            background-color: #fff3cd;
-            color: #856404;
-            border-bottom: 6px solid #ffc107;
-        }
-        .alerta-error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border-bottom: 6px solid #dc3545;
-        }
-        .alerta-info {
-            background-color: #cce5ff;
-            color: #004085;
-            border-bottom: 6px solid #007bff;
-        }
-
-        /* Estilos para resaltar texto */
-        .alerta strong { font-size: 1.6rem; display: block; margin-bottom: 12px; }
-        .estado-badge {
-            display: inline-block;
-            background: rgba(255,255,255,0.8);
-            padding: 8px 18px;
-            border-radius: 25px;
-            margin-top: 15px;
-            font-weight: bold;
-            border: 1px solid rgba(0,0,0,0.1);
-        }
+        body { background-color: #f8f9fa; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+        .card-alerta { border: none; border-radius: 1rem; box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.1); max-width: 500px; width: 90%; text-align: center; overflow: hidden; }
+        .icono-estado { font-size: 4rem; margin-bottom: 1rem; }
     </style>
 </head>
 <body>
 
 <?php
-// Configuramos la hora local
 date_default_timezone_set('America/El_Salvador');
-
 include 'conexion.php';
+
+// --- AUTO-MIGRACIÓN PARA ALMUERZOS Y PERMISOS ---
+$check_cols = mysqli_query($conexion, "SHOW COLUMNS FROM registros_asistencia LIKE 'salida_almuerzo'");
+if (mysqli_num_rows($check_cols) === 0) {
+    mysqli_query($conexion, "ALTER TABLE registros_asistencia 
+        ADD COLUMN salida_almuerzo TIME NULL AFTER hora_ingreso,
+        ADD COLUMN regreso_almuerzo TIME NULL AFTER salida_almuerzo");
+}
+
+$check_cols_permiso = mysqli_query($conexion, "SHOW COLUMNS FROM registros_asistencia LIKE 'salida_permiso'");
+if (mysqli_num_rows($check_cols_permiso) === 0) {
+    mysqli_query($conexion, "ALTER TABLE registros_asistencia 
+        ADD COLUMN salida_permiso TIME NULL AFTER regreso_almuerzo,
+        ADD COLUMN regreso_permiso TIME NULL AFTER salida_permiso");
+}
+
+function mostrarAlerta($tipo, $icono, $titulo, $mensaje, $badge_class, $estado) {
+    $hora_am_pm = date('h:i A'); 
+
+    $bg_color = match($tipo) {
+        'exito' => 'bg-success',
+        'aviso' => 'bg-warning',
+        'error' => 'bg-danger',
+        'info'  => 'bg-info',
+        default => 'bg-primary'
+    };
+    $text_color = ($tipo == 'aviso' || $tipo == 'info') ? 'text-dark' : 'text-white';
+    
+    echo "
+    <div class='card card-alerta'>
+        <div class='card-header $bg_color $text_color py-3 border-0'>
+            <h4 class='mb-0 fw-bold'>$titulo</h4>
+        </div>
+        <div class='card-body p-4 bg-white'>
+            <div class='icono-estado text-".($tipo == 'aviso' ? 'warning' : ($tipo == 'error' ? 'danger' : 'success'))."'>
+                <i class='bi $icono'></i>
+            </div>
+            
+            <h2 class='fw-bold text-dark mb-3'>⌚ $hora_am_pm</h2>
+            
+            <p class='fs-5 text-secondary'>$mensaje</p>
+            ".($estado ? "<span class='badge rounded-pill $badge_class fs-6 px-3 py-2 mt-2 shadow-sm'>$estado</span>" : "")."
+        </div>
+        <div class='card-footer bg-light border-0 py-3'>
+            <a href='scan.php' class='btn btn-outline-secondary rounded-pill px-4'>Volver al Escáner</a>
+        </div>
+    </div>
+    
+    <script>
+        setTimeout(function() {
+            window.location.href = 'scan.php';
+        }, 1500);
+    </script>";
+}
 
 if (isset($_POST['id_empleado']) || isset($_POST['qr_data'])) {
     $id_empleado = mysqli_real_escape_string($conexion, $_POST['qr_data'] ?? $_POST['id_empleado']);
     
-    // 1. Obtener datos del empleado y su horario asignado
     $query_empleado = "SELECT e.nombre_completo, h.hora_entrada, h.hora_salida 
                        FROM empleados e
                        LEFT JOIN horarios h ON e.id_horario = h.id_horario
                        WHERE e.id_empleado = '$id_empleado' AND e.estado = 'Activo'";
-    
     $result_emp = mysqli_query($conexion, $query_empleado);
     
     if (mysqli_num_rows($result_emp) > 0) {
         $empleado = mysqli_fetch_assoc($result_emp);
-        
         $nombre = $empleado['nombre_completo'];
         $hora_prog_entrada = $empleado['hora_entrada'];
         $hora_prog_salida = $empleado['hora_salida'];
         
         $fecha_actual = date('Y-m-d');
         $hora_actual = date('H:i:s');
+        $hora_actual_sec = strtotime($hora_actual);
 
-        // 2. Buscamos si el empleado ya tiene un registro creado el día de HOY
-        $query_hoy = "SELECT * FROM registros_asistencia 
-                      WHERE id_empleado = '$id_empleado' AND fecha = '$fecha_actual'";
+        // Consultar si hay un permiso activo para el empleado hoy
+        $query_permiso = "SELECT * FROM permisos_empleados WHERE id_empleado = '$id_empleado' AND '$fecha_actual' BETWEEN fecha_inicio AND fecha_fin LIMIT 1";
+        $result_permiso = mysqli_query($conexion, $query_permiso);
+        $permiso_hoy = mysqli_fetch_assoc($result_permiso);
+
+        $query_hoy = "SELECT * FROM registros_asistencia WHERE id_empleado = '$id_empleado' AND fecha = '$fecha_actual'";
         $result_hoy = mysqli_query($conexion, $query_hoy);
 
-        // ==========================================
-        // CASO A: NO HAY REGISTRO HOY -> ES ENTRADA
-        // ==========================================
         if (mysqli_num_rows($result_hoy) == 0) {
+            // 1. MARCA DE ENTRADA
+            $estado_entrada = 'A Tiempo';
+            $badge_class = 'text-bg-success';
             
-            $estado_entrada = 'A tiempo';
-            
-            // Calculamos si llegó tarde (Tolerancia de 10 minutos)
-            if ($hora_prog_entrada) {
-                $tolerancia = 10 * 60; 
-                if (strtotime($hora_actual) > (strtotime($hora_prog_entrada) + $tolerancia)) {
-                    $estado_entrada = 'Llegada Tarde';
+            // Verificar si es permiso de Día Completo
+            if ($permiso_hoy && $permiso_hoy['modalidad'] === 'Día completo') {
+                $estado_entrada = 'Permiso Día Completo Justificado';
+                $badge_class = 'text-bg-info';
+            } else {
+                if ($hora_prog_entrada) {
+                    $tolerancia = 5 * 60; // 5 minutos estrictos
+                    if ($hora_actual_sec > (strtotime($hora_prog_entrada) + $tolerancia)) {
+                        $estado_entrada = 'Llegada Tarde';
+                        $badge_class = 'text-bg-danger';
+                    }
                 }
             }
 
-            // INSERTAMOS LA FILA CON LA HORA DE INGRESO
             $query_insert = "INSERT INTO registros_asistencia (id_empleado, fecha, hora_ingreso, tipo_marca, estado_marca) 
                              VALUES ('$id_empleado', '$fecha_actual', '$hora_actual', 'Entrada', '$estado_entrada')";
             
             if (mysqli_query($conexion, $query_insert)) {
-                echo "<div class='alerta alerta-exito'>
-                        <strong>✅ ¡Ingreso registrado!</strong>
-                        Hola <b>$nombre</b>.<br>
-                        <span class='estado-badge'>Estado: $estado_entrada</span>
-                      </div>";
+                if ($permiso_hoy && $permiso_hoy['modalidad'] === 'Día completo') {
+                    mostrarAlerta('info', 'bi-shield-check', 'Ingreso Justificado', "Hola <b>$nombre</b>, tu día está cubierto por un permiso.", $badge_class, $estado_entrada);
+                } else {
+                    mostrarAlerta('exito', 'bi-check-circle-fill', 'Ingreso Registrado', "Hola <b>$nombre</b>, buen turno.", $badge_class, $estado_entrada);
+                }
             } else {
-                echo "<div class='alerta alerta-error'>
-                        <strong>❌ Error en base de datos</strong>
-                        " . mysqli_error($conexion) . "
-                      </div>";
+                mostrarAlerta('error', 'bi-x-octagon-fill', 'Error DB', mysqli_error($conexion), '', '');
             }
 
-        // ==========================================
-        // CASO B: YA HAY REGISTRO HOY -> ES SALIDA
-        // ==========================================
         } else {
             $registro = mysqli_fetch_assoc($result_hoy);
             $id_registro = $registro['id_registro'];
+            $estado_actual = $registro['estado_marca'];
             
-            // Verificamos que la hora de salida aún esté vacía (NULL)
-            if ($registro['hora_salida'] == NULL) {
+            // Si tiene permiso de día completo, cualquier otra lectura solo avisa
+            if ($permiso_hoy && $permiso_hoy['modalidad'] === 'Día completo' && $registro['hora_salida'] == NULL) {
+                // Cerramos el turno si volvió a escanear
+                $estado_final = $estado_actual . " | Salida Normal (Permiso)";
+                $query_update = "UPDATE registros_asistencia SET hora_salida = '$hora_actual', tipo_marca = 'Salida', estado_marca = '$estado_final' WHERE id_registro = '$id_registro'";
+                mysqli_query($conexion, $query_update);
+                mostrarAlerta('aviso', 'bi-info-circle-fill', 'Permiso Activo', "<b>$nombre</b>, tienes permiso de día completo hoy. Turno cerrado.", 'text-bg-info', 'Día Justificado');
+                exit;
+            }
+
+            $tiene_permiso_horas = ($permiso_hoy && $permiso_hoy['modalidad'] === 'Por horas');
+
+            if ($tiene_permiso_horas && $registro['salida_permiso'] == NULL) {
+                // 2. MARCA SALIDA DE PERMISOS POR HORAS
+                $estado_final = $estado_actual . " | Permiso por horas - Salida";
+                $query_update = "UPDATE registros_asistencia SET salida_permiso = '$hora_actual', estado_marca = '$estado_final' WHERE id_registro = '$id_registro'";
+                if (mysqli_query($conexion, $query_update)) {
+                    mostrarAlerta('info', 'bi-door-open-fill', 'Salida por Permiso', "Registrada salida temporal. Tienes un máximo de <b>" . $permiso_hoy['horas_aprobadas'] . " horas</b>.", 'text-bg-info', 'Permiso por Horas');
+                }
+            } elseif ($tiene_permiso_horas && $registro['salida_permiso'] != NULL && $registro['regreso_permiso'] == NULL) {
+                // 3. MARCA REGRESO DE PERMISO POR HORAS
+                $estado_permiso = 'Permiso a Tiempo';
+                $badge_class = 'text-bg-success';
                 
+                $diff_permiso_sec = $hora_actual_sec - strtotime($registro['salida_permiso']);
+                $horas_aprobadas_sec = $permiso_hoy['horas_aprobadas'] * 3600;
+
+                if ($diff_permiso_sec > $horas_aprobadas_sec) { 
+                    $estado_permiso = 'Excedió tiempo de permiso';
+                    $badge_class = 'text-bg-danger';
+                }
+
+                $estado_final = str_replace(" | Permiso por horas - Salida", "", $estado_actual) . " | " . $estado_permiso;
+                $query_update = "UPDATE registros_asistencia SET regreso_permiso = '$hora_actual', estado_marca = '$estado_final' WHERE id_registro = '$id_registro'";
+                if (mysqli_query($conexion, $query_update)) {
+                    mostrarAlerta('exito', 'bi-person-check-fill', 'Regreso de Permiso', "Bienvenido de vuelta al puesto, <b>$nombre</b>.", $badge_class, $estado_permiso);
+                }
+            } elseif ($registro['salida_almuerzo'] == NULL) {
+                // 4. MARCA SALIDA A ALMUERZO
+                $estado_final = $estado_actual . " | En Almuerzo";
+                $query_update = "UPDATE registros_asistencia SET salida_almuerzo = '$hora_actual', estado_marca = '$estado_final' WHERE id_registro = '$id_registro'";
+                if (mysqli_query($conexion, $query_update)) {
+                    mostrarAlerta('info', 'bi-cup-hot-fill', 'Salida a Almorzar', "Buen provecho, <b>$nombre</b>. Tienes 1 hora.", 'text-bg-info', 'Tiempo de Almuerzo');
+                }
+            } elseif ($registro['regreso_almuerzo'] == NULL) {
+                // 5. MARCA REGRESO DE ALMUERZO
+                $estado_almuerzo = 'Almuerzo a Tiempo';
+                $badge_class = 'text-bg-success';
+                
+                $diff_almuerzo = $hora_actual_sec - strtotime($registro['salida_almuerzo']);
+                if ($diff_almuerzo > 3600) { 
+                    $estado_almuerzo = 'Excedió tiempo de almuerzo';
+                    $badge_class = 'text-bg-danger';
+                }
+
+                $estado_final = str_replace(" | En Almuerzo", "", $estado_actual) . " | " . $estado_almuerzo;
+                $query_update = "UPDATE registros_asistencia SET regreso_almuerzo = '$hora_actual', estado_marca = '$estado_final' WHERE id_registro = '$id_registro'";
+                if (mysqli_query($conexion, $query_update)) {
+                    mostrarAlerta('exito', 'bi-person-check-fill', 'Regreso de Almuerzo', "Bienvenido de vuelta, <b>$nombre</b>.", $badge_class, $estado_almuerzo);
+                }
+            } elseif ($registro['hora_salida'] == NULL) {
+                // 6. MARCA DE SALIDA FINAL
                 $estado_salida = 'Salida Normal';
+                $badge_class = 'text-bg-primary';
                 
-                // Calculamos si se fue tarde / hizo horas extra (Margen de 15 minutos)
                 if ($hora_prog_salida) {
-                    $margen_salida = 15 * 60; 
-                    if (strtotime($hora_actual) > (strtotime($hora_prog_salida) + $margen_salida)) {
-                        $estado_salida = 'Horas Extra / Salió Tarde';
+                    if ($hora_actual_sec < strtotime($hora_prog_salida)) {
+                        $estado_salida = 'Salida Temprana';
+                        $badge_class = 'text-bg-warning text-dark';
+                    } elseif ($hora_actual_sec > (strtotime($hora_prog_salida) + (15 * 60))) {
+                        $estado_salida = 'Horas Extra';
+                        $badge_class = 'text-bg-success';
                     }
                 }
 
-                $estado_final = $registro['estado_marca'] . " | " . $estado_salida;
-
-                // ACTUALIZAMOS LA FILA EXISTENTE CON LA HORA DE SALIDA
-                $query_update = "UPDATE registros_asistencia 
-                                 SET hora_salida = '$hora_actual', 
-                                     tipo_marca = 'Salida', 
-                                     estado_marca = '$estado_final' 
-                                 WHERE id_registro = '$id_registro'";
+                $estado_final = $estado_actual . " | " . $estado_salida;
+                $query_update = "UPDATE registros_asistencia SET hora_salida = '$hora_actual', tipo_marca = 'Salida', estado_marca = '$estado_final' WHERE id_registro = '$id_registro'";
                 
                 if (mysqli_query($conexion, $query_update)) {
-                    echo "<div class='alerta alerta-exito'>
-                            <strong>👋 ¡Salida registrada!</strong>
-                            Adiós <b>$nombre</b>.<br>
-                            <span class='estado-badge'>Estado: $estado_salida</span>
-                          </div>";
-                } else {
-                    echo "<div class='alerta alerta-error'>
-                            <strong>❌ Error en base de datos</strong>
-                            " . mysqli_error($conexion) . "
-                          </div>";
+                    mostrarAlerta('exito', 'bi-box-arrow-right', 'Salida Final Registrada', "Hasta luego, <b>$nombre</b>. ¡Buen descanso!", $badge_class, $estado_salida);
                 }
-
             } else {
-                echo "<div class='alerta alerta-aviso'>
-                        <strong>⚠️ Atención</strong>
-                        El empleado <b>$nombre</b> ya completó su registro de entrada y salida de hoy.
-                      </div>";
+                mostrarAlerta('aviso', 'bi-exclamation-triangle-fill', 'Jornada Completada', "<b>$nombre</b>, ya completaste todos tus registros de hoy.", 'text-bg-secondary', 'Turno Finalizado');
             }
         }
     } else {
-        echo "<div class='alerta alerta-error'>
-                <strong>🚫 Acceso Denegado</strong>
-                Empleado no encontrado o se encuentra inactivo.
-              </div>";
+        mostrarAlerta('error', 'bi-person-x-fill', 'Acceso Denegado', "Empleado no encontrado o inactivo.", '', '');
     }
 } else {
-    echo "<div class='alerta alerta-info'>
-            <strong>🔍 Código no detectado</strong>
-            Por favor, escanea un código QR válido.
-          </div>";
+    mostrarAlerta('error', 'bi-qr-code-scan', 'Error de Lectura', "No se detectó un código válido.", '', '');
 }
 ?>
-
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        // Detectamos qué tipo de alerta generó PHP
-        const esExito = document.querySelector('.alerta-exito');
-        const esError = document.querySelector('.alerta-error') || 
-                        document.querySelector('.alerta-aviso') || 
-                        document.querySelector('.alerta-info');
-
-        // Solo inicializamos el audio si hay un mensaje en pantalla
-        if (esExito || esError) {
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            const audioCtx = new AudioContext();
-
-            function reproducirTono(frecuencia, duracion) {
-                if (audioCtx.state === 'suspended') {
-                    audioCtx.resume();
-                }
-                const oscilador = audioCtx.createOscillator();
-                const ganancia = audioCtx.createGain();
-                
-                oscilador.type = 'sine'; 
-                oscilador.frequency.value = frecuencia;
-                
-                oscilador.connect(ganancia);
-                ganancia.connect(audioCtx.destination);
-                
-                oscilador.start();
-                ganancia.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duracion);
-                
-                setTimeout(() => {
-                    oscilador.stop();
-                }, duracion * 1000);
+        const estado = document.querySelector('.card-header');
+        if(estado) {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            function beep(freq, dur) {
+                const osc = ctx.createOscillator(), gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.frequency.value = freq; osc.start();
+                gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + dur);
+                setTimeout(() => osc.stop(), dur * 1000);
             }
-
-            // Reproducimos el sonido según el resultado
-            if (esExito) {
-                reproducirTono(800, 0.3); // 1 pitido de éxito
-            } else if (esError) {
-                reproducirTono(400, 0.15); // 2 pitidos de error
-                setTimeout(() => {
-                    reproducirTono(400, 0.15); 
-                }, 200);
-            }
+            if(estado.classList.contains('bg-success') || estado.classList.contains('bg-info')) beep(800, 0.3);
+            else if(estado.classList.contains('bg-danger') || estado.classList.contains('bg-warning')) { beep(400, 0.15); setTimeout(()=>beep(400, 0.15), 200); }
         }
     });
 </script>
-
 </body>
 </html>
