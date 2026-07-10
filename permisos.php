@@ -1,310 +1,324 @@
 <?php
+// permisos.php
 include("conexion.php");
-if(!isset($_SESSION['usuario'])) { header("Location: login.php"); exit(); }
+date_default_timezone_set('America/El_Salvador');
 
-/*
- * Este módulo maneja NIVELES JERÁRQUICOS de empleados (no usuarios del login).
- * Se auto-crea/actualiza el esquema la primera vez que se visita esta página:
- *   - tabla "niveles_permisos": define qué puede hacer cada nivel
- *   - columna "nivel" en "empleados": asigna un nivel a cada empleado
- */
-
-// --- AUTO-MIGRACIÓN (idempotente, segura de ejecutar en cada carga) ---
-mysqli_query($conexion, "CREATE TABLE IF NOT EXISTS niveles_permisos (
-    nivel VARCHAR(50) NOT NULL PRIMARY KEY,
-    ver_reportes TINYINT(1) NOT NULL DEFAULT 0,
-    exportar_excel TINYINT(1) NOT NULL DEFAULT 0,
-    gestionar_empleados TINYINT(1) NOT NULL DEFAULT 0,
-    ver_todos_registros TINYINT(1) NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-// Verificar si la columna "nivel" ya existe en empleados; si no, agregarla
-$check_columna = mysqli_query($conexion, "SHOW COLUMNS FROM empleados LIKE 'nivel'");
-if (mysqli_num_rows($check_columna) === 0) {
-    mysqli_query($conexion, "ALTER TABLE empleados ADD COLUMN nivel VARCHAR(50) NOT NULL DEFAULT 'Operativo'");
+if(!isset($_SESSION['usuario'])) { 
+    // header("Location: login.php"); // Descomenta si usas control de sesiones
 }
 
-// Si la tabla de niveles está vacía, sembrar niveles base
-$check_niveles = mysqli_query($conexion, "SELECT COUNT(*) AS total FROM niveles_permisos");
-if (mysqli_fetch_assoc($check_niveles)['total'] == 0) {
-    mysqli_query($conexion, "INSERT INTO niveles_permisos (nivel, ver_reportes, exportar_excel, gestionar_empleados, ver_todos_registros) VALUES
-        ('Operativo', 0, 0, 0, 0),
-        ('Supervisor', 1, 0, 0, 1),
-        ('Gerencia', 1, 1, 1, 1),
-        ('Administrador', 1, 1, 1, 1)");
-}
+$mensaje = '';
 
-$mensaje = "";
-$tipo_alerta = "";
+// --- PROCESAR FORMULARIO DE REGISTRO ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['registrar_permiso'])) {
+    $id_empleado = trim($_POST['id_empleado']);
+    $tipo_permiso = trim($_POST['tipo_permiso']);
+    $modalidad = trim($_POST['modalidad']);
+    $motivo = trim($_POST['motivo']);
+    $descripcion = trim($_POST['descripcion']);
+    $fecha_inicio = $_POST['fecha_inicio'];
+    $fecha_fin = $_POST['fecha_fin'];
+    
+    // Si es día completo, enviamos NULL a las horas
+    $hora_inicio = !empty($_POST['hora_inicio']) ? $_POST['hora_inicio'] : null;
+    $hora_fin = !empty($_POST['hora_fin']) ? $_POST['hora_fin'] : null;
+    
+    // Todo nuevo registro entra como Pendiente por defecto
+    $estado = 'Pendiente';
+    $fecha_solicitud = date('Y-m-d H:i:s');
 
-// --- AGREGAR NUEVO NIVEL ---
-if (isset($_POST['agregar_nivel'])) {
-    $nivel_nuevo = trim($_POST['nivel_nuevo']);
-    if ($nivel_nuevo !== '') {
-        $ver_reportes = isset($_POST['ver_reportes']) ? 1 : 0;
-        $exportar_excel = isset($_POST['exportar_excel']) ? 1 : 0;
-        $gestionar_empleados = isset($_POST['gestionar_empleados']) ? 1 : 0;
-        $ver_todos_registros = isset($_POST['ver_todos_registros']) ? 1 : 0;
-
-        $sql = "INSERT INTO niveles_permisos (nivel, ver_reportes, exportar_excel, gestionar_empleados, ver_todos_registros)
-                VALUES (?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE ver_reportes=VALUES(ver_reportes), exportar_excel=VALUES(exportar_excel),
-                gestionar_empleados=VALUES(gestionar_empleados), ver_todos_registros=VALUES(ver_todos_registros)";
-        $stmt = mysqli_prepare($conexion, $sql);
-        mysqli_stmt_bind_param($stmt, "siiii", $nivel_nuevo, $ver_reportes, $exportar_excel, $gestionar_empleados, $ver_todos_registros);
-        if (mysqli_stmt_execute($stmt)) {
-            $mensaje = "Nivel \"" . htmlspecialchars($nivel_nuevo) . "\" guardado correctamente.";
-            $tipo_alerta = "alert-success";
-        } else {
-            $mensaje = "Error al guardar el nivel: " . mysqli_error($conexion);
-            $tipo_alerta = "alert-danger";
-        }
-    }
-}
-
-// --- ACTUALIZAR PERMISOS DE UN NIVEL EXISTENTE ---
-if (isset($_POST['actualizar_nivel'])) {
-    $nivel = $_POST['nivel'];
-    $ver_reportes = isset($_POST['ver_reportes']) ? 1 : 0;
-    $exportar_excel = isset($_POST['exportar_excel']) ? 1 : 0;
-    $gestionar_empleados = isset($_POST['gestionar_empleados']) ? 1 : 0;
-    $ver_todos_registros = isset($_POST['ver_todos_registros']) ? 1 : 0;
-
-    $sql = "UPDATE niveles_permisos SET ver_reportes=?, exportar_excel=?, gestionar_empleados=?, ver_todos_registros=? WHERE nivel=?";
-    $stmt = mysqli_prepare($conexion, $sql);
-    mysqli_stmt_bind_param($stmt, "iiiis", $ver_reportes, $exportar_excel, $gestionar_empleados, $ver_todos_registros, $nivel);
+    $sql_insert = "INSERT INTO solicitudes_permisos (id_empleado, tipo_permiso, modalidad, motivo, descripcion, fecha_inicio, fecha_fin, hora_inicio, hora_fin, estado, fecha_solicitud) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    
+    $stmt = mysqli_prepare($conexion, $sql_insert);
+    mysqli_stmt_bind_param($stmt, "sssssssssss", $id_empleado, $tipo_permiso, $modalidad, $motivo, $descripcion, $fecha_inicio, $fecha_fin, $hora_inicio, $hora_fin, $estado, $fecha_solicitud);
+    
     if (mysqli_stmt_execute($stmt)) {
-        $mensaje = "Permisos de \"" . htmlspecialchars($nivel) . "\" actualizados.";
-        $tipo_alerta = "alert-success";
+        $mensaje = "<div class='alert alert-success alert-dismissible fade show'>Solicitud registrada correctamente y marcada como Pendiente.<button type='button' class='btn-close' data-bs-dismiss='alert'></button></div>";
     } else {
-        $mensaje = "Error al actualizar: " . mysqli_error($conexion);
-        $tipo_alerta = "alert-danger";
+        $mensaje = "<div class='alert alert-danger alert-dismissible fade show'>Error al registrar: " . mysqli_error($conexion) . "<button type='button' class='btn-close' data-bs-dismiss='alert'></button></div>";
     }
+    mysqli_stmt_close($stmt);
 }
 
-// --- ELIMINAR NIVEL (no permite borrar si hay empleados usándolo) ---
-if (isset($_GET['eliminar_nivel'])) {
-    $nivel_eliminar = $_GET['eliminar_nivel'];
+// --- OBTENER EMPLEADOS PARA EL SELECT ---
+$sql_empleados = "SELECT id_empleado, nombre_completo FROM empleados WHERE estado = 'Activo' ORDER BY nombre_completo ASC";
+$res_empleados = mysqli_query($conexion, $sql_empleados);
 
-    $sql_check = "SELECT COUNT(*) AS total FROM empleados WHERE nivel = ?";
-    $stmt_check = mysqli_prepare($conexion, $sql_check);
-    mysqli_stmt_bind_param($stmt_check, "s", $nivel_eliminar);
-    mysqli_stmt_execute($stmt_check);
-    $en_uso = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt_check))['total'];
-
-    if ($en_uso > 0) {
-        $mensaje = "No se puede eliminar \"" . htmlspecialchars($nivel_eliminar) . "\": hay $en_uso empleado(s) asignados a este nivel.";
-        $tipo_alerta = "alert-warning";
-    } else {
-        $sql_del = "DELETE FROM niveles_permisos WHERE nivel = ?";
-        $stmt_del = mysqli_prepare($conexion, $sql_del);
-        mysqli_stmt_bind_param($stmt_del, "s", $nivel_eliminar);
-        mysqli_stmt_execute($stmt_del);
-        $mensaje = "Nivel eliminado correctamente.";
-        $tipo_alerta = "alert-success";
-    }
-}
-
-// --- ASIGNAR NIVEL A UN EMPLEADO ---
-if (isset($_POST['asignar_nivel'])) {
-    $id_empleado = $_POST['id_empleado'];
-    $nivel_asignado = $_POST['nivel_asignado'];
-
-    $sql = "UPDATE empleados SET nivel = ? WHERE id_empleado = ?";
-    $stmt = mysqli_prepare($conexion, $sql);
-    mysqli_stmt_bind_param($stmt, "ss", $nivel_asignado, $id_empleado);
-    if (mysqli_stmt_execute($stmt)) {
-        $mensaje = "Nivel de " . htmlspecialchars($id_empleado) . " actualizado a \"" . htmlspecialchars($nivel_asignado) . "\".";
-        $tipo_alerta = "alert-success";
-    } else {
-        $mensaje = "Error al asignar nivel: " . mysqli_error($conexion);
-        $tipo_alerta = "alert-danger";
-    }
-}
-
-// --- DATOS PARA RENDER ---
-$niveles = mysqli_query($conexion, "SELECT * FROM niveles_permisos ORDER BY nivel ASC");
-$empleados_lista = mysqli_query($conexion, "SELECT id_empleado, nombre_completo, puesto, nivel FROM empleados ORDER BY nombre_completo ASC");
-$niveles_para_select = mysqli_query($conexion, "SELECT nivel FROM niveles_permisos ORDER BY nivel ASC");
-$lista_niveles_nombres = [];
-while ($n = mysqli_fetch_assoc($niveles_para_select)) {
-    $lista_niveles_nombres[] = $n['nivel'];
-}
+// --- OBTENER SOLICITUDES PARA LA TABLA (INNER JOIN) ---
+$sql_solicitudes = "SELECT sp.id_solicitud, e.nombre_completo, sp.tipo_permiso, sp.modalidad, sp.motivo, sp.descripcion, 
+                           sp.fecha_inicio, sp.fecha_fin, sp.hora_inicio, sp.hora_fin, sp.estado, sp.fecha_solicitud 
+                    FROM solicitudes_permisos sp 
+                    INNER JOIN empleados e ON sp.id_empleado = e.id_empleado 
+                    ORDER BY sp.fecha_solicitud DESC";
+$res_solicitudes = mysqli_query($conexion, $sql_solicitudes);
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Permisos por Nivel Jerárquico</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sist.Control - Gestión de Permisos</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        /* Diseño idéntico a tu captura */
+        .navbar-custom {
+            background-color: #0d6efd; /* Azul estándar igual a la imagen */
+        }
+        .navbar-custom .navbar-brand {
+            color: #ffffff;
+            font-size: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 8px; /* Espacio entre el icono y el texto */
+        }
+        .navbar-custom .navbar-nav .nav-link {
+            color: rgba(255, 255, 255, 0.75); /* Letras ligeramente transparentes */
+            font-size: 1rem;
+            margin-right: 10px;
+        }
+        .navbar-custom .navbar-nav .nav-link:hover {
+            color: #ffffff;
+        }
+        /* Pestaña activa (blanca y en negrita) */
+        .navbar-custom .navbar-nav .nav-link.active-tab {
+            color: #ffffff !important; 
+            font-weight: 600;
+        }
+    </style>
 </head>
 <body class="bg-light">
 
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="index.php"><i class="bi bi-upc-scan"></i> AsistenciaQR</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item"><a class="nav-link" href="index.php">Dashboard</a></li>
-                    <li class="nav-item"><a class="nav-link" href="empleados.php">Empleados</a></li>
-                    <li class="nav-item"><a class="nav-link" href="scan.php">Escáner QR</a></li>
-                    <li class="nav-item"><a class="nav-link" href="reportes.php">Reportes</a></li>
-                    <li class="nav-item"><a class="nav-link active" href="permisos.php">Permisos</a></li>
-                </ul>
-                <div class="d-flex align-items-center">
-                    <span class="text-white me-3">Hola, <b><?php echo htmlspecialchars($_SESSION['nombre_admin'] ?? $_SESSION['usuario']); ?></b></span>
-                    <a href="logout.php" class="btn btn-danger btn-sm">Cerrar Sesión</a>
+<nav class="navbar navbar-expand-lg navbar-custom mb-4 py-3 shadow-sm">
+    <div class="container-fluid px-4">
+        <a class="navbar-brand fw-bold" href="#">
+            <i class="bi bi-upc-scan"></i> Sist.Control
+        </a>
+        
+        <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#menuNavegacion">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        
+        <div class="collapse navbar-collapse" id="menuNavegacion">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0 ms-3">
+                <li class="nav-item">
+                    <a class="nav-link" href="dashboard.php">Dashboard</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="empleados.php">Empleados</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="scan.php">Escáner QR</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="analitica.php">Análitica</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link active-tab" href="permisos.php">Permisos</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="auditoria.php">Auditoría</a>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+<div class="container-fluid px-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="text-dark fw-bold mb-0">Gestión de Solicitudes de Permisos</h2>
+    </div>
+    
+    <?= $mensaje ?>
+
+    <div class="row">
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">Nueva Solicitud</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="permisos.php">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Empleado</label>
+                            <select name="id_empleado" class="form-select" required>
+                                <option value="">Seleccione un empleado...</option>
+                                <?php while ($emp = mysqli_fetch_assoc($res_empleados)): ?>
+                                    <option value="<?= htmlspecialchars($emp['id_empleado']) ?>">
+                                        <?= htmlspecialchars($emp['nombre_completo']) ?>
+                                    </option>
+                                <?php endwhile; ?>
+                            </select>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col">
+                                <label class="form-label fw-bold">Tipo de Permiso</label>
+                                <select name="tipo_permiso" class="form-select" required>
+                                    <option value="">Seleccione...</option>
+                                    <option value="Médico">Médico</option>
+                                    <option value="Personal">Personal</option>
+                                    <option value="Vacaciones">Vacaciones</option>
+                                    <option value="Luto">Luto</option>
+                                    <option value="Otro">Otro</option>
+                                </select>
+                            </div>
+                            <div class="col">
+                                <label class="form-label fw-bold">Modalidad</label>
+                                <select name="modalidad" id="modalidadSelect" class="form-select" required>
+                                    <option value="Día completo">Día completo</option>
+                                    <option value="Por horas">Por horas</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Motivo Breve</label>
+                            <input type="text" name="motivo" class="form-control" required placeholder="Ej: Cita médica">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Descripción / Detalles</label>
+                            <textarea name="descripcion" class="form-control" rows="2"></textarea>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col">
+                                <label class="form-label fw-bold">Fecha Inicio</label>
+                                <input type="date" name="fecha_inicio" class="form-control" required>
+                            </div>
+                            <div class="col">
+                                <label class="form-label fw-bold">Fecha Fin</label>
+                                <input type="date" name="fecha_fin" class="form-control" required>
+                            </div>
+                        </div>
+
+                        <div class="row mb-4" id="contenedorHoras" style="display: none;">
+                            <div class="col">
+                                <label class="form-label fw-bold text-primary">Hora Salida</label>
+                                <input type="time" name="hora_inicio" id="hora_inicio" class="form-control">
+                            </div>
+                            <div class="col">
+                                <label class="form-label fw-bold text-primary">Hora Regreso</label>
+                                <input type="time" name="hora_fin" id="hora_fin" class="form-control">
+                            </div>
+                        </div>
+
+                        <button type="submit" name="registrar_permiso" class="btn btn-primary w-100 fw-bold">Registrar Solicitud</button>
+                    </form>
                 </div>
             </div>
         </div>
-    </nav>
 
-    <div class="container mb-5">
-        <h2 class="mb-4">Permisos por Nivel Jerárquico</h2>
-
-        <?php if ($mensaje !== "") { ?>
-            <div class="alert <?php echo $tipo_alerta; ?> shadow-sm"><?php echo $mensaje; ?></div>
-        <?php } ?>
-
-        <div class="row">
-            <!-- COLUMNA IZQUIERDA: NIVELES Y SUS PERMISOS -->
-            <div class="col-lg-7 mb-4">
-                <div class="card shadow-sm mb-4">
-                    <div class="card-header bg-dark text-white fw-bold">Niveles Existentes</div>
-                    <div class="card-body p-0">
-                        <table class="table table-striped align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Nivel</th>
-                                    <th class="text-center">Ver Reportes</th>
-                                    <th class="text-center">Exportar Excel</th>
-                                    <th class="text-center">Gestionar Empleados</th>
-                                    <th class="text-center">Ver Todos los Registros</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php $i_niv = 0; while ($niv = mysqli_fetch_assoc($niveles)) { $i_niv++; $fid = "form_nivel_$i_niv"; ?>
-                                <tr>
-                                    <td>
-                                        <form id="<?php echo $fid; ?>" method="POST" action="permisos.php"></form>
-                                        <input type="hidden" form="<?php echo $fid; ?>" name="nivel" value="<?php echo htmlspecialchars($niv['nivel']); ?>">
-                                        <b><?php echo htmlspecialchars($niv['nivel']); ?></b>
-                                    </td>
-                                    <td class="text-center">
-                                        <input type="checkbox" form="<?php echo $fid; ?>" name="ver_reportes" class="form-check-input" <?php echo $niv['ver_reportes'] ? 'checked' : ''; ?>>
-                                    </td>
-                                    <td class="text-center">
-                                        <input type="checkbox" form="<?php echo $fid; ?>" name="exportar_excel" class="form-check-input" <?php echo $niv['exportar_excel'] ? 'checked' : ''; ?>>
-                                    </td>
-                                    <td class="text-center">
-                                        <input type="checkbox" form="<?php echo $fid; ?>" name="gestionar_empleados" class="form-check-input" <?php echo $niv['gestionar_empleados'] ? 'checked' : ''; ?>>
-                                    </td>
-                                    <td class="text-center">
-                                        <input type="checkbox" form="<?php echo $fid; ?>" name="ver_todos_registros" class="form-check-input" <?php echo $niv['ver_todos_registros'] ? 'checked' : ''; ?>>
-                                    </td>
-                                    <td class="text-nowrap">
-                                        <button type="submit" form="<?php echo $fid; ?>" name="actualizar_nivel" value="1" class="btn btn-sm btn-primary" title="Guardar">
-                                            <i class="bi bi-save"></i>
-                                        </button>
-                                        <a href="permisos.php?eliminar_nivel=<?php echo urlencode($niv['nivel']); ?>"
-                                           class="btn btn-sm btn-outline-danger"
-                                           onclick="return confirm('¿Eliminar el nivel <?php echo htmlspecialchars($niv['nivel']); ?>?')"
-                                           title="Eliminar">
-                                            <i class="bi bi-trash"></i>
-                                        </a>
-                                    </td>
-                                </tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
-                    </div>
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Historial de Solicitudes</h5>
+                    <a href="exportar_permisos.php" class="btn btn-success btn-sm">Exportar Excel</a>
                 </div>
-
-                <div class="card shadow-sm">
-                    <div class="card-header bg-primary text-white fw-bold">Crear Nuevo Nivel</div>
-                    <div class="card-body">
-                        <form method="POST" action="permisos.php" class="row g-3">
-                            <div class="col-md-12">
-                                <label class="form-label">Nombre del Nivel</label>
-                                <input type="text" name="nivel_nuevo" class="form-control" placeholder="Ej. Coordinador" required>
-                            </div>
-                            <div class="col-6 col-md-3 form-check ms-3">
-                                <input type="checkbox" class="form-check-input" name="ver_reportes" id="cr">
-                                <label class="form-check-label" for="cr">Ver Reportes</label>
-                            </div>
-                            <div class="col-6 col-md-3 form-check">
-                                <input type="checkbox" class="form-check-input" name="exportar_excel" id="ce">
-                                <label class="form-check-label" for="ce">Exportar Excel</label>
-                            </div>
-                            <div class="col-6 col-md-3 form-check">
-                                <input type="checkbox" class="form-check-input" name="gestionar_empleados" id="cg">
-                                <label class="form-check-label" for="cg">Gestionar Empleados</label>
-                            </div>
-                            <div class="col-6 col-md-3 form-check">
-                                <input type="checkbox" class="form-check-input" name="ver_todos_registros" id="cv">
-                                <label class="form-check-label" for="cv">Ver Todos los Registros</label>
-                            </div>
-                            <div class="col-12">
-                                <button type="submit" name="agregar_nivel" class="btn btn-success">
-                                    <i class="bi bi-plus-circle"></i> Crear Nivel
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-
-            <!-- COLUMNA DERECHA: ASIGNAR NIVEL A EMPLEADOS -->
-            <div class="col-lg-5 mb-4">
-                <div class="card shadow-sm">
-                    <div class="card-header bg-dark text-white fw-bold">Asignar Nivel a Empleados</div>
-                    <div class="card-body p-0">
-                        <table class="table table-striped align-middle mb-0">
-                            <thead class="table-light">
+                <div class="card-body table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Empleado</th>
+                                <th>Tipo</th>
+                                <th>Fechas / Horas</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (mysqli_num_rows($res_solicitudes) > 0): ?>
+                                <?php while ($sol = mysqli_fetch_assoc($res_solicitudes)): ?>
+                                    <tr>
+                                        <td>
+                                            <strong><?= htmlspecialchars($sol['nombre_completo']) ?></strong><br>
+                                            <small class="text-muted"><?= htmlspecialchars($sol['motivo']) ?></small>
+                                        </td>
+                                        <td><?= htmlspecialchars($sol['tipo_permiso']) ?></td>
+                                        <td>
+                                            <small>
+                                                <span class="badge bg-secondary mb-1"><?= htmlspecialchars($sol['modalidad'] ?? 'Día completo') ?></span><br>
+                                                <strong>Inicia:</strong> <?= date("d/m/Y", strtotime($sol['fecha_inicio'])) ?>
+                                                <?php if ($sol['modalidad'] === 'Por horas' && !empty($sol['hora_inicio'])): ?>
+                                                    <span class="text-primary"> a las <?= date("h:i A", strtotime($sol['hora_inicio'])) ?></span>
+                                                <?php endif; ?>
+                                                <br>
+                                                <strong>Termina:</strong> <?= date("d/m/Y", strtotime($sol['fecha_fin'])) ?>
+                                                <?php if ($sol['modalidad'] === 'Por horas' && !empty($sol['hora_fin'])): ?>
+                                                    <span class="text-primary"> a las <?= date("h:i A", strtotime($sol['hora_fin'])) ?></span>
+                                                <?php endif; ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <?php if ($sol['estado'] === 'Pendiente'): ?>
+                                                <span class="badge bg-warning text-dark">Pendiente</span>
+                                            <?php elseif ($sol['estado'] === 'Aprobado'): ?>
+                                                <span class="badge bg-success">Aprobado</span>
+                                            <?php else: ?>
+                                                <span class="badge bg-danger">Rechazado</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group shadow-sm" role="group">
+                                                <a href="procesar_estado_permiso.php?id=<?= $sol['id_solicitud'] ?>&accion=aprobar" 
+                                                   class="btn btn-sm <?= $sol['estado'] === 'Aprobado' ? 'btn-success text-white' : 'btn-outline-success' ?>">
+                                                   Aprobar
+                                                </a>
+                                                <a href="procesar_estado_permiso.php?id=<?= $sol['id_solicitud'] ?>&accion=rechazar" 
+                                                   class="btn btn-sm <?= $sol['estado'] === 'Rechazado' ? 'btn-danger text-white' : 'btn-outline-danger' ?>">
+                                                   Rechazar
+                                                </a>
+                                                <a href="procesar_estado_permiso.php?id=<?= $sol['id_solicitud'] ?>&accion=eliminar" 
+                                                   class="btn btn-sm btn-outline-secondary"
+                                                   onclick="return confirm('¿Estás seguro de que deseas eliminar esta solicitud permanentemente?');">
+                                                   Eliminar
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endwhile; ?>
+                            <?php else: ?>
                                 <tr>
-                                    <th>Empleado</th>
-                                    <th>Nivel Actual</th>
-                                    <th></th>
+                                    <td colspan="5" class="text-center py-3">No hay solicitudes registradas.</td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                <?php $i_emp = 0; while ($emp = mysqli_fetch_assoc($empleados_lista)) { $i_emp++; $fid2 = "form_emp_$i_emp"; ?>
-                                <tr>
-                                    <td>
-                                        <form id="<?php echo $fid2; ?>" method="POST" action="permisos.php"></form>
-                                        <b><?php echo htmlspecialchars($emp['id_empleado']); ?></b><br>
-                                        <small class="text-muted"><?php echo htmlspecialchars($emp['nombre_completo']); ?></small>
-                                        <input type="hidden" form="<?php echo $fid2; ?>" name="id_empleado" value="<?php echo htmlspecialchars($emp['id_empleado']); ?>">
-                                    </td>
-                                    <td>
-                                        <select form="<?php echo $fid2; ?>" name="nivel_asignado" class="form-select form-select-sm">
-                                            <?php foreach ($lista_niveles_nombres as $nombre_nivel) { ?>
-                                                <option value="<?php echo htmlspecialchars($nombre_nivel); ?>"
-                                                    <?php echo ($emp['nivel'] === $nombre_nivel) ? 'selected' : ''; ?>>
-                                                    <?php echo htmlspecialchars($nombre_nivel); ?>
-                                                </option>
-                                            <?php } ?>
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <button type="submit" form="<?php echo $fid2; ?>" name="asignar_nivel" value="1" class="btn btn-sm btn-primary">
-                                            <i class="bi bi-check2"></i>
-                                        </button>
-                                    </td>
-                                </tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
-                    </div>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
     </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const modalidadSelect = document.getElementById('modalidadSelect');
+        const contenedorHoras = document.getElementById('contenedorHoras');
+        const inputHoraInicio = document.getElementById('hora_inicio');
+        const inputHoraFin = document.getElementById('hora_fin');
+
+        function toggleHoras() {
+            if (modalidadSelect.value === 'Por horas') {
+                contenedorHoras.style.display = 'flex'; // Muestra las casillas
+                inputHoraInicio.setAttribute('required', 'required'); // Hace obligatorio llenar la hora
+                inputHoraFin.setAttribute('required', 'required');
+            } else {
+                contenedorHoras.style.display = 'none'; // Oculta las casillas
+                inputHoraInicio.removeAttribute('required'); // Quita la obligatoriedad
+                inputHoraFin.removeAttribute('required');
+                inputHoraInicio.value = ''; // Limpia el campo por seguridad
+                inputHoraFin.value = '';
+            }
+        }
+
+        // Ejecutar al cambiar la opción
+        modalidadSelect.addEventListener('change', toggleHoras);
+        
+        // Ejecutar al cargar la página
+        toggleHoras();
+    });
+</script>
 
 </body>
 </html>

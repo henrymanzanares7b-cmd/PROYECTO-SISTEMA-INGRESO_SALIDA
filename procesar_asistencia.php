@@ -68,7 +68,7 @@ function mostrarAlerta($tipo, $icono, $titulo, $mensaje, $badge_class, $estado) 
     <script>
         setTimeout(function() {
             window.location.href = 'scan.php';
-        }, 2100);
+        }, 2500);
     </script>";
 }
 
@@ -91,8 +91,12 @@ if (isset($_POST['id_empleado']) || isset($_POST['qr_data'])) {
         $hora_actual = date('H:i:s');
         $hora_actual_sec = strtotime($hora_actual);
 
-        // Consultar si hay un permiso activo para el empleado hoy
-        $query_permiso = "SELECT * FROM permisos_empleados WHERE id_empleado = '$id_empleado' AND '$fecha_actual' BETWEEN fecha_inicio AND fecha_fin LIMIT 1";
+        // Consultar si hay un permiso APROBADO activo para el empleado hoy
+        $query_permiso = "SELECT * FROM solicitudes_permisos 
+                          WHERE id_empleado = '$id_empleado' 
+                          AND estado = 'Aprobado' 
+                          AND '$fecha_actual' BETWEEN fecha_inicio AND fecha_fin 
+                          LIMIT 1";
         $result_permiso = mysqli_query($conexion, $query_permiso);
         $permiso_hoy = mysqli_fetch_assoc($result_permiso);
 
@@ -138,7 +142,6 @@ if (isset($_POST['id_empleado']) || isset($_POST['qr_data'])) {
             
             // Si tiene permiso de día completo, cualquier otra lectura solo avisa
             if ($permiso_hoy && $permiso_hoy['modalidad'] === 'Día completo' && $registro['hora_salida'] == NULL) {
-                // Cerramos el turno si volvió a escanear
                 $estado_final = $estado_actual . " | Salida Normal (Permiso)";
                 $query_update = "UPDATE registros_asistencia SET hora_salida = '$hora_actual', tipo_marca = 'Salida', estado_marca = '$estado_final' WHERE id_registro = '$id_registro'";
                 mysqli_query($conexion, $query_update);
@@ -150,37 +153,33 @@ if (isset($_POST['id_empleado']) || isset($_POST['qr_data'])) {
 
             if ($tiene_permiso_horas && $registro['salida_permiso'] == NULL) {
                 // 2. MARCA SALIDA DE PERMISOS POR HORAS
-                $estado_final = $estado_actual . " | Permiso por horas - Salida";
+                $estado_final = $estado_actual . " | Salió con permiso";
+                $hora_regreso_estimada = date("h:i A", strtotime($permiso_hoy['hora_fin']));
+
                 $query_update = "UPDATE registros_asistencia SET salida_permiso = '$hora_actual', estado_marca = '$estado_final' WHERE id_registro = '$id_registro'";
                 if (mysqli_query($conexion, $query_update)) {
-                    mostrarAlerta('info', 'bi-door-open-fill', 'Salida por Permiso', "Registrada salida temporal. Tienes un máximo de <b>" . $permiso_hoy['horas_aprobadas'] . " horas</b>.", 'text-bg-info', 'Permiso por Horas');
+                    mostrarAlerta('info', 'bi-door-open-fill', 'Salió con Permiso', "<b>$nombre</b>, registramos tu salida. Recuerda regresar a las <b>$hora_regreso_estimada</b>.", 'text-bg-info', 'En Permiso');
                 }
             } elseif ($tiene_permiso_horas && $registro['salida_permiso'] != NULL && $registro['regreso_permiso'] == NULL) {
                 // 3. MARCA REGRESO DE PERMISO POR HORAS
-                $estado_permiso = 'Permiso a Tiempo';
+                $estado_permiso = 'Regresó de permiso (A tiempo)';
                 $badge_class = 'text-bg-success';
                 
-                $diff_permiso_sec = $hora_actual_sec - strtotime($registro['salida_permiso']);
-                $horas_aprobadas_sec = $permiso_hoy['horas_aprobadas'] * 3600;
-
-                if ($diff_permiso_sec > $horas_aprobadas_sec) { 
-                    $estado_permiso = 'Excedió tiempo de permiso';
+                // Calculamos si regresó tarde según la hora_fin estipulada en su solicitud
+                $hora_fin_permiso = strtotime($permiso_hoy['hora_fin']) +59 ;
+                
+                if ($hora_actual_sec > $hora_fin_permiso) { 
+                    $estado_permiso = 'Regresó de permiso (Tarde)';
                     $badge_class = 'text-bg-danger';
                 }
 
-                $estado_final = str_replace(" | Permiso por horas - Salida", "", $estado_actual) . " | " . $estado_permiso;
+                $estado_final = str_replace(" | Salió con permiso", "", $estado_actual) . " | " . $estado_permiso;
                 $query_update = "UPDATE registros_asistencia SET regreso_permiso = '$hora_actual', estado_marca = '$estado_final' WHERE id_registro = '$id_registro'";
                 if (mysqli_query($conexion, $query_update)) {
-                    mostrarAlerta('exito', 'bi-person-check-fill', 'Regreso de Permiso', "Bienvenido de vuelta al puesto, <b>$nombre</b>.", $badge_class, $estado_permiso);
+                    mostrarAlerta('exito', 'bi-person-check-fill', 'Regresó de Permiso', "Bienvenido de vuelta, <b>$nombre</b>. Tu regreso ha sido registrado.", $badge_class, $estado_permiso);
                 }
-            } elseif ($registro['salida_almuerzo'] == NULL) {
-                // 4. MARCA SALIDA A ALMUERZO
-                $estado_final = $estado_actual . " | En Almuerzo";
-                $query_update = "UPDATE registros_asistencia SET salida_almuerzo = '$hora_actual', estado_marca = '$estado_final' WHERE id_registro = '$id_registro'";
-                if (mysqli_query($conexion, $query_update)) {
-                    mostrarAlerta('info', 'bi-cup-hot-fill', 'Salida a Almorzar', "Buen provecho, <b>$nombre</b>. Tienes 1 hora.", 'text-bg-info', 'Tiempo de Almuerzo');
-                }
-            } elseif ($registro['regreso_almuerzo'] == NULL) {
+
+            } elseif ($registro['salida_almuerzo'] != NULL && $registro['regreso_almuerzo'] == NULL) {
                 // 5. MARCA REGRESO DE ALMUERZO
                 $estado_almuerzo = 'Almuerzo a Tiempo';
                 $badge_class = 'text-bg-success';
