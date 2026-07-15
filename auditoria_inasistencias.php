@@ -134,6 +134,7 @@ if (!$resultado_auditoria) {
                                         $btn_wsp = "";
                                     }
 
+<<<<<<< HEAD
                                     // --- LÓGICA DE CORREO ELECTRÓNICO (ahora abre el modal de programación) ---
                                     $correo_limpio = !empty($fila['correo']) ? trim($fila['correo']) : '';
 
@@ -147,6 +148,17 @@ if (!$resultado_auditoria) {
                                                             data-correo='" . htmlspecialchars($correo_limpio, ENT_QUOTES) . "'>
                                                             <i class='bi bi-envelope-clock me-1'></i>
                                                        </button>";
+=======
+                                    // --- LÓGICA DE CORREO ELECTRÓNICO ---
+                                    $correo_limpio = !empty($fila['correo']) ? trim($fila['correo']) : '';
+                                    $asunto_correo = rawurlencode("Aviso de Inasistencia - MARCAJE CMD");
+                                    $cuerpo_correo = rawurlencode("Hola $nombre,\n\nNotamos que no has registrado asistencia en MARCAJE CMD durante la última semana. ¿Todo bien?\n\nSaludos.");
+                                    
+                                    if ($correo_limpio !== '') {
+                                        $btn_correo = "<a href='mailto:{$correo_limpio}?subject={$asunto_correo}&body={$cuerpo_correo}' class='btn btn-primary btn-sm rounded-pill px-3 shadow-sm ms-1'>
+                                                        <i class='bi bi-envelope me-1'></i>
+                                                       </a>";
+>>>>>>> 572afb4fa78077abde712f5bfd828051dd069c3e
                                     } else {
                                         $btn_correo = "";
                                     }
@@ -188,6 +200,7 @@ if (!$resultado_auditoria) {
         </div>
     </div>
 
+<<<<<<< HEAD
     <!-- ================= MODAL: Programar correo de inasistencia ================= -->
     <div class="modal fade" id="modalProgramarCorreo" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -222,6 +235,8 @@ if (!$resultado_auditoria) {
         </div>
     </div>
 
+=======
+>>>>>>> 572afb4fa78077abde712f5bfd828051dd069c3e
     <script>
         document.getElementById('inputBuscar').addEventListener('keyup', function() {
             let filtro = this.value.toLowerCase();
@@ -245,6 +260,7 @@ if (!$resultado_auditoria) {
     </script>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<<<<<<< HEAD
 
     <script>
         const modalProgramar   = document.getElementById('modalProgramarCorreo');
@@ -335,5 +351,7 @@ if (!$resultado_auditoria) {
             }
         });
     </script>
+=======
+>>>>>>> 572afb4fa78077abde712f5bfd828051dd069c3e
 </body>
 </html>

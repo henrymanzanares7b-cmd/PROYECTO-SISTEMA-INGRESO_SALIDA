@@ -4,7 +4,11 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
+<<<<<<< HEAD
     "content-hash": "98606120c11ab1e4c00a9544e77e2c5d",
+=======
+    "content-hash": "b8fc76d4d2fd9a7199969838cb86a710",
+>>>>>>> 572afb4fa78077abde712f5bfd828051dd069c3e
     "packages": [
         {
             "name": "composer/pcre",
@@ -331,6 +335,7 @@
             "time": "2025-01-14T11:49:03+00:00"
         },
         {
+<<<<<<< HEAD
             "name": "phpmailer/phpmailer",
             "version": "v7.1.1",
             "source": {
@@ -413,6 +418,8 @@
             "time": "2026-05-18T08:06:14+00:00"
         },
         {
+=======
+>>>>>>> 572afb4fa78077abde712f5bfd828051dd069c3e
             "name": "phpoffice/phpspreadsheet",
             "version": "2.1.17",
             "source": {
